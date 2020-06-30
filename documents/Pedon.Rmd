@@ -1,0 +1,71 @@
+---
+title: "NASIS Pedon Count"
+author: "Jason nemecek"
+date: "4/7/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### NASIS Pedon ID Count 
+* Just the pedon table
+
+```SQL
+EXEC SQL SELECT COUNT (*) as ct
+FROM pedon;.
+```
+
+|count|
+|-----|
+|723,552|
+
+### Distinct Pedon IDs that have horizons
+
+```SQL 
+EXEC SQL SELECT COUNT (DISTINCT peiid) as ct
+FROM pedon
+INNER JOIN phorizon On phorizon.peiidref=pedon.peiid;. 
+```
+
+|count|
+|-----|
+|630,549|
+
+### Distinct Pedon IDs that have sites
+```SQL 
+EXEC SQL SELECT COUNT (DISTINCT peiid) as ct
+FROM pedon
+INNER JOIN  siteobs ON  siteobs.siteobsiid=pedon.siteobsiidref
+INNER JOIN site ON site.siteiid=siteobs.siteiidref;.
+````
+
+|count|
+|-----|
+|723,555|
+
+
+### Pedon ID count removing duplicate user pedon ID
+
+
+``` SQL 
+EXEC SQL SELECT COUNT (DISTINCT peiid) as ct
+FROM pedon
+INNER JOIN  siteobs ON  siteobs.siteobsiid=pedon.siteobsiidref
+AND peiid IN (SELECT TOP 1 peiid
+FROM REAL pedon AS pchild 
+INNER JOIN REAL siteobs ON siteobs.siteobsiid=pedon.siteobsiidref 
+AND pchild.upedonid=pedon.upedonid 
+ORDER BY  
+CASE WHEN labdatadescflag = 1 and pedbiidref != '105' THEN 1
+WHEN pedbiidref != '105' and labdatadescflag = 0 THEN 2
+WHEN labdatadescflag = 1 and pedbiidref = '105' THEN 3
+WHEN pedbiidref = '105' and labdatadescflag = 0 THEN 4 
+END ASC)
+INNER JOIN site ON site.siteiid=siteobs.siteiidref;.
+```
+
+|count|
+|-----|
+|690,520|
