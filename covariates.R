@@ -1,3 +1,3 @@
-#code for getting covariates into raster stack and doing extract
+#code for getting covariates into raster stack and doing extract 
 
 
