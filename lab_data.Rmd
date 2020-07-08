@@ -1,0 +1,183 @@
+---
+title: "Lab Data"
+author: "Stephen Roecker"
+date: "July 9, 2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+# LDM Sqlite
+
+```{r sqlite}
+
+# https://new.cloudvault.usda.gov/index.php/s/eSoPYbWDBQNX2HP
+
+library(DBI)
+
+con <- dbConnect(RSQLite::SQLite(), "C:/Users/steph/Nextcloud/data/ldm/LDM-compact_20200422.sqlite")
+area <- read.csv("C:/Users/steph/Nextcloud/data/ldm/lab_area.txt", stringsAsFactors = FALSE)
+dbCreateTable(con, "area", area)
+(ldm_names <- dbListTables(con))
+ldm <- lapply(ldm_names, function(x) dbReadTable(con , x))
+names(ldm) <- ldm_names
+dbDisconnect(con)
+
+
+
+# horizon table
+chem_vars <- c("labsampnum", "ec_predict_one_to_two", "ec_predict_one_to_two_method", "electrical_conductivity_satx", "electrical_cond_satx_method", "ph_h2o", "ph_h2o_method", "ph_saturated_paste", "exchangeable_sodium", "sodium_absorption_ratio", "total_estimated_salts_satx")
+phys_vars <- c("labsampnum", "texture_lab", "clay_total", "silt_total", "sand_total", "total_frag_wt_pct_gt_2_mm_ws", "bulk_density_third_bar", "estimated_organic_matter")
+l_vars <- c("labsampnum", "layer_key", "pedon_key", "hzn_desgn", "hzn_top", "hzn_bot", "texture_description", "stratified_textures_flag")
+
+h <- merge(ldm$layer[l_vars],
+           ldm$physical[! duplicated(ldm$physical$labsampnum), phys_vars],
+           by = "labsampnum",
+           all.x = TRUE
+           )
+h <- merge(h, 
+           ldm$chemical[chem_vars],
+           by = "labsampnum",
+           all.x = TRUE
+           )
+
+# convert via pedotransfer functions
+library(soilassessment)
+
+h <- within(h, {
+  hzn_top     = as.integer(hzn_top)
+  hzn_bot     = as.integer(hzn_bot)
+  texture_lab = tolower(texture_lab)
+  tex = NA
+  tex[texture_lab %in% "c"]    = 1
+  tex[texture_lab %in% "sic"]  = 2
+  tex[texture_lab %in% "sc"]   = 8
+  tex[texture_lab %in% "cl"]   = 7
+  tex[texture_lab %in% "sicl"] = 3
+  tex[texture_lab %in% "scl"]  = 9
+  tex[texture_lab %in% "l"]    = 11
+  tex[texture_lab %in% "sil"]  = 4
+  tex[texture_lab %in% c("sl", "vfsl", "fsl")] = 5
+  tex[texture_lab %in% c("ls", "vfls", "fls")] = 10
+  tex[texture_lab %in% "s"]    = 12
+  tex[texture_lab %in% "cos"]  = 13
+  tex[texture_lab %in% c("fs", "vfs")] = 15
+  ec_ptf = ECconversion1(ec = ec_predict_one_to_two, oc = estimated_organic_matter, clay = clay_total, texture = tex, soilsolution = "1:2", method = "FAO")
+  ec_ptf = ifelse(is.na(electrical_conductivity_satx), ec_ptf, electrical_conductivity_satx)
+})
+
+
+
+# site table
+ncss_vars <- c("site_key", "pedon_key", "pedlabsampnum", "pedoniid", "samp_name", "corr_name", "samp_classdate", "corr_classdate")
+site_vars <- c("site_key", "user_site_id", "latitude_std_decimal_degrees", "longitude_std_decimal_degrees")
+
+s <- merge(ldm$nasis_ncss[ncss_vars],
+           ldm$nasis_site[site_vars],
+           by = "site_key",
+           all.x = TRUE
+           )
+s <- within(s, {
+            samp_classdate = strptime(samp_classdate, format = "%Y-%m-%d %H:%M:%S")
+            corr_classdate = strptime(corr_classdate, format="%Y-%m-%d %H:%M:%S")
+            })
+s <- s[with(s, order(corr_classdate, samp_classdate, decreasing = TRUE)), ]
+
+
+
+# soil profile collection object
+# optionally test for bad horizonation... flag, and remove
+  if (rmHzErrors) {
+    h.test <- plyr::ddply(h, 'pedon_key', function(d) {
+      res <- aqp::hzDepthTests(top=d[['hzn_top']], bottom=d[['hzn_bot']])
+      return(all(!res))
+    })
+    names(h.test)[2] <- "hz_logic_pass"
+
+    # which are the good (valid) ones?
+    good.ids <- as.character(h.test$pedon_key[which(h.test$hz_logic_pass)])
+    bad.ids  <- as.character(h.test$pedon_key[which(! h.test$hz_logic_pass)])
+
+    # keep the good ones
+    h <- h[which(h$pedon_key %in% good.ids), ]
+
+    # keep track of those components with horizonation errors
+    if (length(bad.ids) > 0)
+      assign('kssl.hz.problems', value=bad.ids, envir=soilDB.env)
+  }
+
+library(aqp)
+h <- h[h$pedon %in% s$pedon_key, ]
+s <- s[s$pedon_key %in% h$pedon_key, ]
+spc <- h
+depths(spc) <- pedon_key ~ hzn_top + hzn_bot
+site(spc) <- s
+
+
+# mpspline
+library(mpspline2)
+
+gsp_vars <- c("ph_h2o", "ec_predict_one_to_two", "exchangeable_sodium", "sodium_absorption_ratio", "total_estimated_salts_satx")
+
+s_mps_l <- lapply(gsp_vars, function(x) {
+  
+  vars <- c("pedon_key", "hzn_top", "hzn_bot", x)
+  h2 <- horizons(spc)[vars]
+  h2 <- h2[! is.na(h2[, x]), ]
+  
+  mps <- mpspline2::mpspline(
+    h2,
+    var_name = x, 
+    lam = 0.8, 
+    d   = c(0, 30, 100, 150)
+    )
+  mps_df <- lapply(mps, function(x2) {
+    # d <- c("000_030_cm", "030_100_cm", "100_150_cm")
+    data.frame(pedon_key = x2$pedon_key, var = x2$est_dcm[1:3]) ->.;
+    names(.)[2] <- x
+    .$depths <- names(x2$est_dcm)[1:3]
+    return(.)
+    })
+  mps_df <- do.call("rbind", mps_df)
+  
+  # tidyr::spread(mps_df, depths, var)
+  var <- names(mps_df)[2]
+  mps_df <- reshape(mps_df,
+                    direction = "wide",
+                    idvar   = "pedon_key",
+                    v.names = var,
+                    timevar = "depths"
+                    )
+  attributes(mps_df)$reshapeWide <- NULL
+  
+  return(mps_df)
+  })
+names(s_mps_l) <- gsp_vars
+
+
+# merge mpspline results
+s_mps <- merge(s,     s_mps_l$ph_h2o, by = "pedon_key", all.x = TRUE, sort = FALSE)
+s_mps <- merge(s_mps, s_mps_l$ec_predict_one_to_two, by = "pedon_key", all.x = TRUE, sort = FALSE)
+s_mps <- merge(s_mps, s_mps_l$exchangeable_sodium, by = "pedon_key", all.x = TRUE, sort = FALSE)
+s_mps <- merge(s_mps, s_mps_l$sodium_absorption_ratio, by = "pedon_key", all.x = TRUE, sort = FALSE)
+s_mps <- merge(s_mps, s_mps_l$total_estimated_salts_satx, by = "pedon_key", all.x = TRUE, sort = FALSE)
+
+
+# sf object
+library(sf)
+s_sf <- subset(s, complete.cases(latitude_std_decimal_degrees, longitude_std_decimal_degrees))
+s_sf <- st_as_sf(s_sf, 
+                 coords = c("longitude_std_decimal_degrees", "latitude_std_decimal_degrees"),
+                 crs = 4326
+                 )
+
+
+
+# save(ldm, spc, s_mps_l, s_sf, file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200422.RData")
+load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200422.RData")
+
+
+```
+
