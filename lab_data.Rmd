@@ -167,16 +167,16 @@ s_mps <- merge(s_mps, s_mps_l$total_estimated_salts_satx, by = "pedon_key", all.
 
 # sf object
 library(sf)
-s_sf <- subset(s, complete.cases(latitude_std_decimal_degrees, longitude_std_decimal_degrees))
-s_sf <- st_as_sf(s_sf, 
+s_mps_sf <- subset(s_mps, complete.cases(latitude_std_decimal_degrees, longitude_std_decimal_degrees))
+s_mps_sf <- st_as_sf(s_mps_sf, 
                  coords = c("longitude_std_decimal_degrees", "latitude_std_decimal_degrees"),
                  crs = 4326
                  )
 
 
 
-# save(ldm, spc, s_mps_l, s_sf, file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200422.RData")
-load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200422.RData")
+# save(ldm, spc, s_mps_l, s_mps_sf, file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200708.RData")
+load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200708.RData")
 
 
 ```

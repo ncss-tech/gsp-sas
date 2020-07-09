@@ -22,58 +22,58 @@ nmo <- nmo %>%
 library(aqp)
 library(soilDB)
 
-le <- get_legend_from_SDA(WHERE = "areasymbol LIKE '%'")
-st <- unique(substr(le$areasymbol, 1, 2))
+f <- fetchGDB(dsn ="D:/geodata/soils/gSSURGO_CONUS.gdb", WHERE = "areasymbol LIKE '%'")
+mu <- get_mapunit_from_GDB(dsn = "D:/geodata/soils/gSSURGO_CONUS.gdb", WHERE = "muname LIKE '%'", stats = TRUE)
+# save(f_us, mu_us, file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo.RData")
+load(file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo.RData")
 
 
-get_states <- function(x) {
-  lapply(x, function(x) {
-    cat(as.character(Sys.time()), "getting ", x)
-    tryCatch({
-      fetchSDA(WHERE = paste0("areasymbol LIKE '", x, "%'"))
-      },
-      error = function(err) {
-        print(paste("Error occured: ", err))
-        return(NULL)
-        }
-      )
-    })
-}
-test <- get_states(st[st != "MI"])
-names(test) <- st[st != "MI"]
+# le <- get_legend_from_SDA(WHERE = "areasymbol LIKE '%'")
+# st <- unique(substr(le$areasymbol, 1, 2))
+# 
+# get_states <- function(x) {
+#   lapply(x, function(x) {
+#     cat(as.character(Sys.time()), "getting ", x)
+#     tryCatch({
+#       fetchSDA(WHERE = paste0("areasymbol LIKE '", x, "%'"))
+#       },
+#       error = function(err) {
+#         print(paste("Error occured: ", err))
+#         return(NULL)
+#         }
+#       )
+#     })
+# }
+# test <- get_states(st[st != "MI"])
+# names(test) <- st[st != "MI"]
+# 
+# st2 <- names(test)[unlist(lapply(test, is.null))]
+# st2 <- paste0(c(st2, "MI"), collapse = "|")
+# as <- le[grepl(st2, le$areasymbol), "areasymbol"]
+# test2 <- get_states(as)
+# names(test2) <- as
+# 
+# # save(test, test2, f, mu, file = "gsp_salinity_fetchSDA.RData")
+# load(file = "gsp_salinity_fetchSDA.RData")
+# 
+# # combine fetchSDA
+# idx <- unlist(lapply(test, is.null))
+# test <- test[! idx]
+# 
+# sn <- lapply(test, function(x) siteNames(x))
+# snt <- table(unlist(sn))
+# sn <- dimnames(snt[snt == 55])[[1]]
+# 
+# s <- do.call("rbind", lapply(test, function(x) site(x)[sn]))
+# h <- do.call("rbind", lapply(test, function(x) horizons(x)))
+# f <- h
+# depths(f) <- cokey ~ hzdept_r + hzdepb_r
+# site(f) <- s[!duplicated(s$cokey), ]
 
-st2 <- names(test)[unlist(lapply(test, is.null))]
-st2 <- paste0(c(st2, "MI"), collapse = "|")
-as <- le[grepl(st2, le$areasymbol), "areasymbol"]
-test2 <- get_states(as)
-names(test2) <- as
 
+site(f_us)$idx <- with(site(f_us, paste(compname, comppct_r, compkind, majcompflag, local_phase)))
 
-# save(test, test2, f, mu, file = "gsp_salinity_fetchSDA.RData")
-load(file = "gsp_salinity_fetchSDA.RData")
-
-
-
-# combine fetchSDA
-idx <- unlist(lapply(test, is.null))
-test <- test[! idx]
-
-sn <- lapply(test, function(x) siteNames(x))
-snt <- table(unlist(sn))
-sn <- dimnames(snt[snt == 55])[[1]]
-
-s <- do.call("rbind", lapply(test, function(x) site(x)[sn]))
-h <- do.call("rbind", lapply(test, function(x) horizons(x)))
-f <- h
-depths(f) <- cokey ~ hzdept_r + hzdepb_r
-site(f) <- s[!duplicated(s$cokey), ]
-
-
-
-# aggregate by map unit
-detach("package:aqp", unload = TRUE)
-
-mu <- aqp::horizons(aqp::slice(f, 0:100 ~ cokey + ec_r, strict = FALSE)) %>%
+mu <- aqp::horizons(aqp::slice(f_us, 0:100 ~ cokey + ec_r, strict = FALSE)) %>%
   # component
   group_by(cokey) %>%
   summarize(ec_r = weighted.mean(ec_r, w = hzdepb_r - hzdept_r)) %>%
