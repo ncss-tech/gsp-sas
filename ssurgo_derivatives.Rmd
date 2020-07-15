@@ -48,13 +48,13 @@ load(file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo.RData")
 
 
 # generate unique (?) mukeys (aka nationalmusym)
-s     <- site(f_us)
-s     <- merge(s, mu_us[c("mukey", "muname")], by = "mukey", all.x = TRUE)
-s$idx <- with(s, paste(muname, compname, comppct_r, compkind, majcompflag, localphase, drainagecl, erocl, slope_r))
-s_sub <- s[! duplicated(s$idx), ]
-horizons(f_us) <- s[c("cokey", "idx")]
-idx <- which(! duplicated(horizons(f_us)$idx))
-f_us_sub <- f_us[, idx]
+# s     <- site(f_us)
+# s     <- merge(s, mu_us[c("mukey", "muname")], by = "mukey", all.x = TRUE)
+# s$idx <- with(s, paste(muname, compname, comppct_r, compkind, majcompflag, localphase, drainagecl, erocl, slope_r))
+# s_sub <- s[! duplicated(s$idx), ]
+# horizons(f_us) <- s[c("cokey", "idx")]
+# idx <- which(! duplicated(horizons(f_us)$idx))
+# f_us_sub <- f_us[, idx]
 
 ```
 
@@ -63,22 +63,41 @@ f_us_sub <- f_us[, idx]
 # Aggregate chorizon data to map units
 
 ```{r}
-
+library(aqp)
 library(dplyr)
 
 # aggregate components
-co_agg <- aqp::segment(aqp::horizons(f_us), intervals = c(0, 100), hzdepcols = c("hzdept_r", "hzdepb_r")) %>%
-  group_by(cokey) %>%
-  summarize(ec_r = weighted.mean(ec_r, w = hzdepb_r - hzdept_r)) %>%
+co_agg <- aqp::segment(aqp::horizons(f_us), intervals = c(0, 30, 100), hzdepcols = c("hzdept_r", "hzdepb_r")) %>%
+  group_by(cokey, segment_id) %>%
+  summarize(ec_r  = weighted.mean(ec_r,  w = hzdepb_r - hzdept_r, na.rm = TRUE),
+            ph1to1h2o_r  = log10(weighted.mean(1/10^-ph1to1h2o_r,  w = hzdepb_r - hzdept_r, na.rm = TRUE)),
+            sar_r = weighted.mean(sar_r, w = hzdepb_r - hzdept_r, na.rm = TRUE)
+            ) %>%
   ungroup() %>%
-  right_join(aqp::site(f_us), by = "cokey") 
+  right_join(select(aqp::site(f_us), mukey, cokey, comppct_r), by = "cokey")
+
 
 # aggregate mapunits
-mu_agg_ec <- co_agg %>%
-  group_by(mukey) %>%
-  summarize(ec_r = weighted.mean(ec_r, w = comppct_r, na.rm = TRUE))
+mu_agg_h <- co_agg %>%
+  group_by(mukey, segment_id) %>%
+  summarize(ec_r  = weighted.mean(ec_r, w = comppct_r, na.rm = TRUE),
+            ph1to1h2o_r = log10(weighted.mean(1/10^-ph1to1h2o_r, w = comppct_r, na.rm = TRUE)),
+            sar_r = weighted.mean(sar_r, w = comppct_r, na.rm = TRUE)
+            ) %>%
+  ungroup() %>%
+  filter(!is.na(segment_id)) %>%
+  as.data.frame()
+mu_agg_h$segment_id <- paste0("i", mu_agg_h$segment_id)
+mu_agg_h2 <- reshape(mu_agg_h,
+                     direction = "wide",
+                     idvar     = "mukey",
+                     timevar   = "segment_id",
+                     v.names   = c("ec_r", "ph1to1h2o_r", "sar_r")
+                     )
+attributes(mu_agg_h2)$reshapeWide <- NULL
 
-mu_agg_landform <- co_agg %>%
+
+mu_agg_landform <- site(f_us) %>%
   filter(!is.na(landform)) %>%
   group_by(mukey, landform) %>%
   summarize(comppct_r = sum(comppct_r, na.rm = TRUE)) %>%
@@ -86,7 +105,7 @@ mu_agg_landform <- co_agg %>%
   filter(!duplicated(mukey)) %>%
   select(- comppct_r)
 
-mu_agg_pmkind <- co_agg %>%
+mu_agg_pmkind <- site(f_us) %>%
   filter(!is.na(pmkind)) %>%
   group_by(mukey, pmkind) %>%
   summarize(comppct_r = sum(comppct_r, na.rm = TRUE)) %>%
@@ -94,7 +113,7 @@ mu_agg_pmkind <- co_agg %>%
   filter(!duplicated(mukey)) %>%
   select(- comppct_r)
 
-mu_agg_pmorigin <- co_agg %>%
+mu_agg_pmorigin <- site(f_us) %>%
   filter(!is.na(pmorigin)) %>%
   group_by(mukey, pmorigin) %>%
   summarize(comppct_r = sum(comppct_r, na.rm = TRUE)) %>%
@@ -102,7 +121,7 @@ mu_agg_pmorigin <- co_agg %>%
   filter(!duplicated(mukey)) %>%
   select(- comppct_r)
 
-mu_agg <- mu_agg_ec %>%
+mu_agg <- mu_agg_h2 %>%
   left_join(mu_agg_landform, by = "mukey") %>%
   left_join(mu_agg_pmorigin, by = "mukey") %>%
   left_join(mu_agg_pmkind, by = "mukey") %>%
@@ -153,10 +172,9 @@ mu_landform <- mu_agg %>%
 # filter(ec_r > 2)
 
 
-mu_agg$ec_c <- cut(mu_agg$ec_r, breaks = c(0, 2, 4, 8, 16))
-
-ec_t <- as.data.frame(xtabs(~ pmkind + ec_c, data = mu))
-ec_t <- tidyr::spread(ec_t, ec_c, Freq)
+# mu_agg$ec_c <- cut(mu_agg$ec_r, breaks = c(0, 2, 4, 8, 16))
+# ec_t <- as.data.frame(xtabs(~ pmkind + ec_c, data = mu))
+# ec_t <- tidyr::spread(ec_t, ec_c, Freq)
 
 ```
 
@@ -173,7 +191,7 @@ mu_agg <- within(mu_agg, {
   pmkind2 = ifelse(grepl("grus|igneous|Saprolite|sandstone|limestone|shale", pmkind2, ignore.case = TRUE), "Residuum", pmkind2)
   # Colluvium
   pmkind2 = ifelse(grepl("Valley side alluvium|Slope alluvium|Creep deposits|Pedisediment|Cryoturbate", pmkind2), "Colluvium", pmkind2)
-  pmkind2 = ifelse(grepl("spread|slide|Earthflow|flow deposits|Debris|Talus|rock|Scree|mass movement", pmkind2, ignore.case = TRUE), "	Mass movement deposits", pmkind2)
+  pmkind2 = ifelse(grepl("spread|slide|Earthflow|flow deposits|Debris|Talus|rock|Scree|mass movement", pmkind2, ignore.case = TRUE), "Mass movement deposits", pmkind2)
   # Glacial
   pmkind2 = ifelse(grepl("Glaciofluvial deposits", pmkind2), "Outwash", pmkind2)
   pmkind2 = ifelse(grepl("Glaciolacustrine deposits", pmkind2), "Lacustrine deposits", pmkind2)
@@ -191,6 +209,7 @@ mu_agg <- within(mu_agg, {
   
   })
 
+# save(f_us, mu_us, mu_agg, file = "gsp_salinity_fetchGDB.RData")
 write.csv(mu_agg, file = "gnatsgo_gsp_muaggatt.csv", row.names = FALSE)
 
 
