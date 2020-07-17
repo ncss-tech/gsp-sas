@@ -253,15 +253,15 @@ summary (compcl)
 #change subsets to match number of covariates
 
 #check number of covariates
-length(comp) # number of covariates plus the Prop column
+length(compcl) # number of covariates plus the Prop column
 
-subsets <- c(1:(length(comp)-1))
+subsets <- c(1:(length(compcl)-1))
 length(subsets)
 
 #set seeds to get reproducible results when the process in parallel
 set.seed(915)
-seeds <- vector(mode = "list", length=105) #I don't know why 105
-for(i in 1:104) seeds[[i]] <- sample.int(1000, length(subsets) + 1)
+seeds <- vector(mode = "list", length=156) #length is 1 more than number of covariates
+for(i in 1:75) seeds[[i]] <- sample.int(1000, length(subsets) + 1)
 seeds[[105]] <- sample.int(1000, 1)
 
 #set up the rfe control
@@ -277,8 +277,8 @@ ctrl.RFE <- rfeControl(functions = rfFuncs,
 c1 <- makeCluster(detectCores()-1)
 registerDoParallel(c1)
 set.seed(9)
-rf.RFE <- rfe(x = comp[,-1],
-              y = comp$Prop,
+rf.RFE <- rfe(x = compcl[,-1],
+              y = compcl$Prop,
               sizes = subsets,
               rfeControl = ctrl.RFE,
               allowParallel = TRUE
