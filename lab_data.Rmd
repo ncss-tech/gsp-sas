@@ -1,5 +1,5 @@
 ---
-title: "Lab Data"
+title: "Lab Data - GSP"
 author: "Stephen Roecker"
 date: "July 9, 2020"
 output: html_document
@@ -11,14 +11,14 @@ editor_options:
 
 # LDM Sqlite
 
-```{r sqlite}
+```{r ldm}
 
 # https://new.cloudvault.usda.gov/index.php/s/eSoPYbWDBQNX2HP
 
 library(DBI)
 
-con <- dbConnect(RSQLite::SQLite(), "C:/Users/steph/Nextcloud/data/ldm/LDM-compact_20200422.sqlite")
-area <- read.csv("C:/Users/steph/Nextcloud/data/ldm/lab_area.txt", stringsAsFactors = FALSE)
+con <- dbConnect(RSQLite::SQLite(), "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.sqlite")
+area <- read.csv("C:/Users/stephen.roecker/Nextcloud/data/ldm/lab_area.txt", stringsAsFactors = FALSE)
 dbCreateTable(con, "area", area)
 (ldm_names <- dbListTables(con))
 ldm <- lapply(ldm_names, function(x) dbReadTable(con , x))
@@ -42,31 +42,6 @@ h <- merge(h,
            by = "labsampnum",
            all.x = TRUE
            )
-
-# convert via pedotransfer functions
-library(soilassessment)
-
-h <- within(h, {
-  hzn_top     = as.integer(hzn_top)
-  hzn_bot     = as.integer(hzn_bot)
-  texture_lab = tolower(texture_lab)
-  tex = NA
-  tex[texture_lab %in% "c"]    = 1
-  tex[texture_lab %in% "sic"]  = 2
-  tex[texture_lab %in% "sc"]   = 8
-  tex[texture_lab %in% "cl"]   = 7
-  tex[texture_lab %in% "sicl"] = 3
-  tex[texture_lab %in% "scl"]  = 9
-  tex[texture_lab %in% "l"]    = 11
-  tex[texture_lab %in% "sil"]  = 4
-  tex[texture_lab %in% c("sl", "vfsl", "fsl")] = 5
-  tex[texture_lab %in% c("ls", "vfls", "fls")] = 10
-  tex[texture_lab %in% "s"]    = 12
-  tex[texture_lab %in% "cos"]  = 13
-  tex[texture_lab %in% c("fs", "vfs")] = 15
-  ec_ptf = ECconversion1(ec = ec_predict_one_to_two, oc = estimated_organic_matter, clay = clay_total, texture = tex, soilsolution = "1:2", method = "FAO")
-  ec_ptf = ifelse(is.na(electrical_conductivity_satx), ec_ptf, electrical_conductivity_satx)
-})
 
 
 
@@ -116,7 +91,16 @@ depths(spc) <- pedon_key ~ hzn_top + hzn_bot
 site(spc) <- s
 
 
+# save(ldm, spc, file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
+
+```
+
+
+
 # mpspline
+
+```{r mps}
+
 library(mpspline2)
 
 gsp_vars <- c("ph_h2o", "ec_predict_one_to_two", "exchangeable_sodium", "sodium_absorption_ratio", "total_estimated_salts_satx")
@@ -173,11 +157,104 @@ s_mps_sf <- st_as_sf(s_mps_sf,
                  crs = 4326
                  )
 
-
-
-# save(ldm, spc, s_mps_l, s_mps_sf, file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200708.RData")
-load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200708.RData")
-
+# save(ldm, spc, s_mps_l, s_mps_sf, file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
+load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
 
 ```
 
+
+
+# pedotransfer functions
+
+```{r pt}
+
+load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
+
+library(aqp)
+
+
+# sample
+s    <- as.data.frame(s_mps_sf)
+h    <- horizons(spc)
+vars <- c("pedon_key", "labsampnum", "hzn_desgn", "hzn_top", "hzn_bot", "texture_lab", "clay_total", "ec_predict_one_to_two", "electrical_conductivity_satx", "ph_h2o", "ph_saturated_paste")
+
+col_idx <- grepl("ph_|ec_|exchangeable", names(s))
+row_idx <- s$pedon_key %in% unique(h[complete.cases(h[vars]), ]$pedon_key)
+s_sub <- s[row_idx, ]
+n    <- round(nrow(s_sub) * 0.75)
+idx  <- clhs::clhs(s_sub[col_idx], size = n)
+pkey <- s_sub[idx, "pedon_key"]
+
+h <- horizons(spc)
+h <- within(h, {
+  hzn_mid = (hzn_bot - hzn_top) /  2
+  texture = factor(texture_lab, levels = aqp::SoilTextureLevels())
+  hdm = NA
+  hds = NA
+  hdm[grepl("C", hzn_desgn)] = "C"
+  hdm[grepl("B", hzn_desgn)] = "B"
+  hdm[grepl("A", hzn_desgn)] = "A"
+  hdm[grepl("O", hzn_desgn)] = "O"
+  hds[grepl("k", hzn_desgn)] = "k"
+  hds[grepl("kk", hzn_desgn)] = "kk"
+  hds[grepl("k", hzn_desgn)] = "k"
+  hds[grepl("y", hzn_desgn)] = "y"
+  hds[grepl("z", hzn_desgn)] = "z"
+  hds[grepl("n", hzn_desgn)] = "n"
+})
+train <- subset(h, pedon_key %in% pkey)
+test  <- subset(h, ! pedon_key %in% pkey)
+summary(h_test)
+
+
+# model
+ph_lm <- lm(ph_saturated_paste ~ splines::ns(ph_h2o, 3) + hdm, data = train, y = TRUE)
+plot(ph_lm)
+termplot(ph_lm, partial.resid = TRUE)
+visreg::visreg(ph_lm)
+summary(ph_lm)
+plot(ph_lm$y, ph_lm$fitted.values); abline(0, 1)
+
+
+
+ec_glm <- glm(electrical_conductivity_satx ~ log(ec_predict_one_to_two + 0.1) + ph_h2o + clay_total + sand_total + texture + hdm + hzn_mid, data = train, y = TRUE, family = Gamma(link = log))
+plot(ec_glm)
+termplot(ec_glm, partial.resid = TRUE)
+visreg::visreg(ec_glm)
+plot(ec_glm$y, ec_glm$fitted.values); abline(0, 1)
+modEvA::Dsquared(ec_glm, adjust = TRUE)
+summary(ec_glm)
+
+ec_rf <- randomForest(electrical_conductivity_satx ~ ec_predict_one_to_two + ph_h2o + clay_total + hdm, data = train, na.action = na.exclude)
+plot(ec_rf$y, ec_rf$predicted); abline(0, 1)
+
+
+
+# convert via pedotransfer functions
+library(soilassessment)
+
+h <- within(h, {
+  hzn_top     = as.integer(hzn_top)
+  hzn_bot     = as.integer(hzn_bot)
+  texture_lab = tolower(texture_lab)
+  tex = NA
+  tex[texture_lab %in% "c"]    = 1
+  tex[texture_lab %in% "sic"]  = 2
+  tex[texture_lab %in% "sc"]   = 8
+  tex[texture_lab %in% "cl"]   = 7
+  tex[texture_lab %in% "sicl"] = 3
+  tex[texture_lab %in% "scl"]  = 9
+  tex[texture_lab %in% "l"]    = 11
+  tex[texture_lab %in% "sil"]  = 4
+  tex[texture_lab %in% c("sl", "vfsl", "fsl")] = 5
+  tex[texture_lab %in% c("ls", "vfls", "fls")] = 10
+  tex[texture_lab %in% "s"]    = 12
+  tex[texture_lab %in% "cos"]  = 13
+  tex[texture_lab %in% c("fs", "vfs")] = 15
+  ec_ptf = ECconversion1(ec = ec_predict_one_to_two, oc = estimated_organic_matter, clay = clay_total, texture = tex, soilsolution = "1:2", method = "FAO")
+  # ec_ptf = ifelse(is.na(electrical_conductivity_satx), ec_ptf, electrical_conductivity_satx)
+})
+
+
+
+```
