@@ -1,0 +1,231 @@
+---
+title: "SSURGO derivatives"
+author: "Stephen Roecker"
+date: "7/14/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+# load pedotransfer functions
+load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
+
+```
+
+
+
+# MLRA overlaps
+
+```{r mlra}
+library(dplyr)
+
+nmo <- read.csv("mukey_mlra_overlap.csv", stringsAsFactors = FALSE)
+nmo$mukey <- as.character(nmo$mukey)
+nmo <- nmo[with(nmo, order(mukey, - membership)), ]
+# nmo <- nmo[! duplicated(nmo$mukey), ]
+nmo <- nmo %>%
+  group_by(mukey) %>%
+  summarize(muacres = sum(area_ac),
+            membership = membership[which.max(membership)],
+            mlra    = mlra[which.max(membership)]
+            ) %>%
+  ungroup() %>%
+  as.data.frame()
+
+```
+
+
+
+# fetchGDB
+
+```{r fetchGDB}
+library(aqp)
+library(soilDB)
+
+f_statsgo <- fetchGDB(dsn ="C:/geodata/soils/gNATSGO_CONUS_FY20.gdb", WHERE = "areasymbol = 'US'")
+mu_us <- get_mapunit_from_GDB(dsn = "C:/geodata/soils/gNATSGO_CONUS_FY20.gdb", stats = TRUE)
+# save(f_us, mu_us, file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo_fy20.RData")
+load(file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo_fy20.RData")
+
+
+# generate unique (?) mukeys (aka nationalmusym)
+# s     <- site(f_us)
+# s     <- merge(s, mu_us[c("mukey", "muname")], by = "mukey", all.x = TRUE)
+# s$idx <- with(s, paste(muname, compname, comppct_r, compkind, majcompflag, localphase, drainagecl, erocl, slope_r))
+# s_sub <- s[! duplicated(s$idx), ]
+# horizons(f_us) <- s[c("cokey", "idx")]
+# idx <- which(! duplicated(horizons(f_us)$idx))
+# f_us_sub <- f_us[, idx]
+
+```
+
+
+
+# Aggregate chorizon data to map units
+
+```{r}
+library(aqp)
+library(dplyr)
+co_agg <- aqp::segment(aqp::horizons(f_us), intervals = c(0, 30, 100), hzdepcols = c("hzdept_r", "hzdepb_r")) %>%
+  mutate(ec_predict_one_to_two = ec_r,
+         ph_h2o     = ph1to1h2o_r,
+         clay_total = claytotal_r,
+         )
+# pedotransfer functions
+co_agg$ph_ptf <- predict(ph_lm,  co_agg)
+co_agg$ec_ptf <- predict(ec_glm, co_agg, type = "response")
+# aggregate components
+co_agg <- co_agg %>%
+  group_by(cokey, segment_id) %>%
+  summarize(ec_r  = weighted.mean(ec_ptf, w = hzdepb_r - hzdept_r, na.rm = TRUE),
+            ph_r  = log10(weighted.mean(1/10^-ph_ptf, w = hzdepb_r - hzdept_r, na.rm = TRUE)),
+            sar_r = weighted.mean(sar_r, w = hzdepb_r - hzdept_r, na.rm = TRUE)
+            ) %>%
+  ungroup() %>%
+  right_join(select(aqp::site(f_us), mukey, cokey, comppct_r), by = "cokey")
+
+
+# aggregate mapunits
+mu_agg_h <- co_agg %>%
+  group_by(mukey, segment_id) %>%
+  summarize(ec_r  = weighted.mean(ec_r, w = comppct_r, na.rm = TRUE),
+            ph_r = log10(weighted.mean(1/10^-ph_r, w = comppct_r, na.rm = TRUE)),
+            sar_r = weighted.mean(sar_r, w = comppct_r, na.rm = TRUE)
+            ) %>%
+  ungroup() %>%
+  filter(!is.na(segment_id)) %>%
+  as.data.frame()
+mu_agg_h$segment_id <- paste0("i", mu_agg_h$segment_id)
+mu_agg_h2 <- reshape(mu_agg_h,
+                     direction = "wide",
+                     idvar     = "mukey",
+                     timevar   = "segment_id",
+                     v.names   = c("ec_r", "ph_r", "sar_r")
+                     )
+attributes(mu_agg_h2)$reshapeWide <- NULL
+
+
+mu_agg_landform <- site(f_us) %>%
+  filter(!is.na(landform)) %>%
+  group_by(mukey, landform) %>%
+  summarize(comppct_r = sum(comppct_r, na.rm = TRUE)) %>%
+  arrange(mukey, - comppct_r) %>%
+  filter(!duplicated(mukey)) %>%
+  select(- comppct_r)
+
+mu_agg_pmkind <- site(f_us) %>%
+  filter(!is.na(pmkind)) %>%
+  group_by(mukey, pmkind) %>%
+  summarize(comppct_r = sum(comppct_r, na.rm = TRUE)) %>%
+  arrange(mukey, - comppct_r) %>%
+  filter(!duplicated(mukey)) %>%
+  select(- comppct_r)
+
+mu_agg_pmorigin <- site(f_us) %>%
+  filter(!is.na(pmorigin)) %>%
+  group_by(mukey, pmorigin) %>%
+  summarize(comppct_r = sum(comppct_r, na.rm = TRUE)) %>%
+  arrange(mukey, - comppct_r) %>%
+  filter(!duplicated(mukey)) %>%
+  select(- comppct_r)
+
+mu_agg <- mu_agg_h2 %>%
+  left_join(mu_agg_landform, by = "mukey") %>%
+  left_join(mu_agg_pmorigin, by = "mukey") %>%
+  left_join(mu_agg_pmkind, by = "mukey") %>%
+  left_join(nmo, by = "mukey")
+
+# save(f_us, mu_us, mu_agg, file = "gsp_salinity_fetchGDB.RData")
+
+```
+
+
+
+# Aggregate map units to landform, pmorigin, and pmkind
+
+```{r}
+
+load(file = "gsp_salinity_fetchGDB.RData")
+
+library(dplyr)
+
+# aggregate by pmkind, pmorigin and landform
+mu_pmorigin <- mu_agg %>%
+  # pmkind, pmorigin, and landform
+  filter(muacres > 0) %>%
+  group_by(mlra, pmorigin) %>%
+  summarize(pct = ifelse(any(ec_r > 2), sum(muacres[ec_r > 2], na.rm = TRUE) / sum(muacres, na.rm = TRUE), 0)) %>%
+  ungroup() %>%
+  mutate(pct = round(pct * 100))
+  # filter(ec_r > 2)
+
+
+mu_pmkind <- mu_agg %>%
+  # pmkind, pmorigin, and landform
+  filter(muacres > 0) %>%
+  group_by(mlra, pmkind) %>%
+  summarize(p = ifelse(any(ec_r > 2), sum(muacres[ec_r > 2], na.rm = TRUE) / sum(muacres, na.rm = TRUE), 0)) %>%
+  ungroup() %>%
+  mutate(p = round(p * 100))
+# filter(ec_r > 2)
+
+
+mu_landform <- mu_agg %>%
+  # pmkind, pmorigin, and landform
+  filter(muacres > 0) %>%
+  group_by(mlra, landform) %>%
+  summarize(p = ifelse(any(ec_r > 2), sum(muacres[ec_r > 2], na.rm = TRUE) / sum(muacres, na.rm = TRUE), 0)) %>%
+  ungroup() %>%
+  mutate(p = round(p * 100))
+# filter(ec_r > 2)
+
+
+# mu_agg$ec_c <- cut(mu_agg$ec_r, breaks = c(0, 2, 4, 8, 16))
+# ec_t <- as.data.frame(xtabs(~ pmkind + ec_c, data = mu))
+# ec_t <- tidyr::spread(ec_t, ec_c, Freq)
+
+```
+
+
+
+# Generate SSURGO derivatives
+
+```{r}
+
+mu_agg <- within(mu_agg, {
+  pmkind2 = as.character(pmkind)
+  # Others
+  pmkind2 = ifelse(grepl("loess", pmkind2), "Loess", pmkind2)
+  pmkind2 = ifelse(grepl("grus|igneous|Saprolite|sandstone|limestone|shale", pmkind2, ignore.case = TRUE), "Residuum", pmkind2)
+  # Colluvium
+  pmkind2 = ifelse(grepl("Valley side alluvium|Slope alluvium|Creep deposits|Pedisediment|Cryoturbate", pmkind2), "Colluvium", pmkind2)
+  pmkind2 = ifelse(grepl("spread|slide|Earthflow|flow deposits|Debris|Talus|rock|Scree|mass movement", pmkind2, ignore.case = TRUE), "Mass movement deposits", pmkind2)
+  # Glacial
+  pmkind2 = ifelse(grepl("Glaciofluvial deposits", pmkind2), "Outwash", pmkind2)
+  pmkind2 = ifelse(grepl("Glaciolacustrine deposits", pmkind2), "Lacustrine deposits", pmkind2)
+  pmkind2 = ifelse(grepl("till|Drift", pmkind2), "Till", pmkind2)
+  # Ash
+  pmkind2 = ifelse(grepl("Tephra|Ash flow|volcanic ash|Lahar deposits|Pyroclastic flow|Tuff|Scoria|Cinders|Pumice", pmkind2, ignore.case = TRUE), "Volcanic ash", pmkind2)
+  # Other
+  pmkind2 = ifelse(grepl("Eolian sands", pmkind2), "Eolian deposits", pmkind2)
+  pmkind2 = ifelse(grepl("Overbank deposits", pmkind2), "Alluvium", pmkind2)
+  pmkind2 = ifelse(grepl("Backswamp deposit|Diatomaceous earth|Diamicton|Marl", pmkind2), "Lacustrine deposits", pmkind2)
+  pmkind2 = ifelse(grepl("mine spoil", pmkind2), "Mine spoil or earthy fill", pmkind2)
+  pmkind2 = ifelse(grepl("organic material|Coprogenic material", pmkind2), "Organic material", pmkind2)
+  pmkind2 = ifelse(grepl("Glaciomarine|Lagoonal deposits|Fluviomarine deposits|Estuarine deposits|Greensands", pmkind2), "Marine deposits", pmkind2)
+  pmkind2 = ifelse(grepl("mixed", pmkind2), NA, pmkind2)
+  
+  })
+
+# save(f_us, mu_us, mu_agg, file = "gsp_salinity_fetchGDB.RData")
+write.csv(mu_agg, file = "gnatsgo_gsp_muaggatt.csv", row.names = FALSE)
+
+
+```
+
+
+          
