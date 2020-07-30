@@ -21,7 +21,8 @@ rm(required.packages, new.packages)
 rasterOptions(maxmemory = 1e+09, chunksize = 1e+08, memfrac = 0.9)
 #set working directory
 
-setwd("E:/DSMFocus/Salinity/Covariates_ISRIC/ISRIC/CONUS")
+####setwd("E:/DSMFocus/Salinity/Covariates_ISRIC/ISRIC/CONUS")
+setwd("E:/DSMFocus/Salinity/Covariates_ISRIC/ISRIC/testset")
 getwd()
 
 ###Create Image Indices###
@@ -37,9 +38,7 @@ predictors$blue <- predictors$band1
 predictors$band1 = NULL 
 summary(predictors)
 
-#remove NAs ##only do this if calculating PCA
-#predictors@data <- na.omit(predictors@data)
-#summary(predictors)
+
 
 ###generate salinity indices (13 total)
 predictors$ndvi <- imageIndices(predictors$blue, predictors$green, predictors$red, predictors$nir, predictors$swir1, predictors$swir2, "NDVI")
@@ -111,31 +110,6 @@ hist(predictors$si3)
 
 predictors$si5 = sqrt(predictors$si5)
 hist(predictors$si5)
-
-###PCA for image indices
-#extract indices from predictors spatialgriddataframe
-#predictors_c = predictors@data[ ,c("si1","si2","si3","si4","si5","si6","savi","vssi","ndsi","ndvi","sr","crsi", "bi")]
-#predictors_c <- na.omit(predictors_c)
-#summary(predictors_c)
-
-#examine correlation between indices
-#ind_cor = cor(predictors_c) 
-#corrplot(ind_cor, method="number", number.cex = 0.8) 
-
-#run PCA and view eigenvectors plot
-#pca <- prcomp(predictors_c[], scale=TRUE)
-#fviz_eig(pca)
-
-##return the selected PCs to the predictors spatialgriddataframe
-#pred_pcs <- predict(pca,predictors_c[]) 
-#predictors@data$PCA1 = pred_pcs[,1]
-#predictors@data$PCA2 = pred_pcs[,2]
-#predictors@data$PCA3 = pred_pcs[,3]
-#summary(predictors)
-
-
-###convert spatialgriddataframe to raster objects
-#p <- as(predictors, 'SpatialPixelsDataFrame') #only if coverting to a raster brick
 
 ndvi <- raster(predictors, layer = 7)
 ndsi <- raster(predictors, layer = 8)
@@ -219,22 +193,40 @@ names(pts.ext)
 setwd("E:/DSMFocus/Salinity")
 saveRDS(pts.ext, "pts_ext_covs.rds")
 
-#clean out memory
+##save as shapefile if wanted
+#gsppoints <- pts.ext
+#gsppointscl <- gsppoints[, -c(1:11, 13:28)]
+#coordinates(gsppointscl) <- ~ longitude_std_decimal_degrees + latitude_std_decimal_degrees # modify with field names in table
+#projection(gsppoints) <- temp.proj
+
+#writeOGR(gsppointscl, ".", "gsppoints", driver="ESRI Shapefile")
+
+##clean out memory
 gc()
 
 #############################################################################
 
 ###Covariate data reduction using recursive feature elimination###
+###Should be done just on training points###
 
-#data prep
+##data prep
 
 #read in RDS file with points that include extracted covariate values
-##comp <- as.data.frame(readRDS("points.rds"))
+comp <- as.data.frame(readRDS("points.rds"))
 comp <- as.data.frame(pts.ext)
 
-names(comp)
+## testing block with smaller dataset ##
+#training.pts <- readOGR("gsppointsclip.shp") #trimmed down set of points for testing
+#names(training.pts)
+#plot(projgrid)
+#plot(training.pts, add=TRUE)
+#
+#comp <- as.data.frame(training.pts) #for testing
+#
+#
+#names(comp)
 
-#remove unneeded column and change the first column name to Prop
+#remove unneeded columns and change the first column name to Prop
 comp <- comp[, -c(1:10,12:30)]
 names(comp)
 names(comp)[c(1)] <- c('Prop')
@@ -256,19 +248,20 @@ summary (compcl)
 length(compcl) # number of covariates plus the Prop column
 
 subsets <- c(1:(length(compcl)-1))
+#subsets <- c(1:25,50)
 length(subsets)
 
 #set seeds to get reproducible results when the process in parallel
 set.seed(915)
-seeds <- vector(mode = "list", length=156) #length is 1 more than number of covariates
-for(i in 1:75) seeds[[i]] <- sample.int(1000, length(subsets) + 1)
-seeds[[105]] <- sample.int(1000, 1)
+seeds <- vector(mode = "list", length=156) #length is 1 more than number of covariates CHANGE AS NEEDED
+for(i in 1:15) seeds[[i]] <- sample.int(1000,16) # 1:x x=folds*repeats (for 5 folds & 3 repeats x=15) and sample.int(1000,x+1)
+seeds[[16]] <- sample.int(1000, 1) #seeds = folds*repeats plus 1
 
 #set up the rfe control
 ctrl.RFE <- rfeControl(functions = rfFuncs,
                        method = "repeatedcv",
-                       number = 15,
-                       repeats = 5,
+                       number = 5, #changed to from 15 folds with 5 repeats to speed up process
+                       repeats = 3,
                        seeds = seeds,
                        verbose = FALSE)
 
@@ -284,3 +277,6 @@ rf.RFE <- rfe(x = compcl[,-1],
               allowParallel = TRUE
 )
 stopCluster(c1)
+
+#check results
+rf.RFE
