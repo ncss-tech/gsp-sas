@@ -8,7 +8,12 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
+
 knitr::opts_chunk$set(echo = TRUE)
+
+# load pedotransfer functions
+load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
+
 ```
 
 
@@ -41,10 +46,10 @@ nmo <- nmo %>%
 library(aqp)
 library(soilDB)
 
-f_us <- fetchGDB(dsn ="D:/geodata/soils/gSSURGO_CONUS.gdb", WHERE = "areasymbol LIKE '%'")
-mu_us <- get_mapunit_from_GDB(dsn = "D:/geodata/soils/gSSURGO_CONUS.gdb", WHERE = "muname LIKE '%'", stats = TRUE)
-# save(f_us, mu_us, file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo.RData")
-load(file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo.RData")
+f_statsgo <- fetchGDB(dsn ="C:/geodata/soils/gNATSGO_CONUS_FY20.gdb", WHERE = "areasymbol = 'US'")
+mu_us <- get_mapunit_from_GDB(dsn = "C:/geodata/soils/gNATSGO_CONUS_FY20.gdb", stats = TRUE)
+# save(f_us, mu_us, file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo_fy20.RData")
+load(file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo_fy20.RData")
 
 
 # generate unique (?) mukeys (aka nationalmusym)
@@ -65,12 +70,19 @@ load(file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo.RData")
 ```{r}
 library(aqp)
 library(dplyr)
-
-# aggregate components
 co_agg <- aqp::segment(aqp::horizons(f_us), intervals = c(0, 30, 100), hzdepcols = c("hzdept_r", "hzdepb_r")) %>%
+  mutate(ec_predict_one_to_two = ec_r,
+         ph_h2o     = ph1to1h2o_r,
+         clay_total = claytotal_r,
+         )
+# pedotransfer functions
+co_agg$ph_ptf <- predict(ph_lm,  co_agg)
+co_agg$ec_ptf <- predict(ec_glm, co_agg, type = "response")
+# aggregate components
+co_agg <- co_agg %>%
   group_by(cokey, segment_id) %>%
-  summarize(ec_r  = weighted.mean(ec_r,  w = hzdepb_r - hzdept_r, na.rm = TRUE),
-            ph1to1h2o_r  = log10(weighted.mean(1/10^-ph1to1h2o_r,  w = hzdepb_r - hzdept_r, na.rm = TRUE)),
+  summarize(ec_r  = weighted.mean(ec_ptf, w = hzdepb_r - hzdept_r, na.rm = TRUE),
+            ph_r  = log10(weighted.mean(1/10^-ph_ptf, w = hzdepb_r - hzdept_r, na.rm = TRUE)),
             sar_r = weighted.mean(sar_r, w = hzdepb_r - hzdept_r, na.rm = TRUE)
             ) %>%
   ungroup() %>%
@@ -81,7 +93,7 @@ co_agg <- aqp::segment(aqp::horizons(f_us), intervals = c(0, 30, 100), hzdepcols
 mu_agg_h <- co_agg %>%
   group_by(mukey, segment_id) %>%
   summarize(ec_r  = weighted.mean(ec_r, w = comppct_r, na.rm = TRUE),
-            ph1to1h2o_r = log10(weighted.mean(1/10^-ph1to1h2o_r, w = comppct_r, na.rm = TRUE)),
+            ph_r = log10(weighted.mean(1/10^-ph_r, w = comppct_r, na.rm = TRUE)),
             sar_r = weighted.mean(sar_r, w = comppct_r, na.rm = TRUE)
             ) %>%
   ungroup() %>%
@@ -92,7 +104,7 @@ mu_agg_h2 <- reshape(mu_agg_h,
                      direction = "wide",
                      idvar     = "mukey",
                      timevar   = "segment_id",
-                     v.names   = c("ec_r", "ph1to1h2o_r", "sar_r")
+                     v.names   = c("ec_r", "ph_r", "sar_r")
                      )
 attributes(mu_agg_h2)$reshapeWide <- NULL
 

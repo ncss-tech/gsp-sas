@@ -129,6 +129,7 @@ h <- within(h, {
 
 # calculate weighted averages
 h_seg <- segment(h, intervals = c(0, 30, 100), hzdepcols = c("hzn_top", "hzn_bot"))
+
 test <- group_by(h_seg, pedon_key, segment_id) %>%
     summarize(clay = weighted.mean(clay_total, w = hzn_mid, na.rm = TRUE),
               ec  = weighted.mean(ec_predict_one_to_two, w = hzn_mid, na.rm = TRUE),
@@ -140,6 +141,7 @@ test <- group_by(h_seg, pedon_key, segment_id) %>%
   filter(!is.na(segment_id)) %>%
   as.data.frame()
 test$segment_id <- paste0("i", test$segment_id)
+
 test_w <- reshape(test,
                   direction = "wide",
                   idvar     = "pedon_key",
@@ -168,7 +170,7 @@ test  <- subset(h, ! pedon_key %in% clhs_pkey)
 
 # model
 # pH
-ph_lm <- lm(ph_saturated_paste ~ splines::ns(ph_h2o, 3) + hdm, data = train, y = TRUE)
+ph_lm <- lm(ph_saturated_paste ~ splines::ns(ph_h2o, 3), data = train, y = TRUE)
 plot(ph_lm)
 termplot(ph_lm, partial.resid = TRUE)
 visreg::visreg(ph_lm)
@@ -183,7 +185,7 @@ caret::RMSE(ph_test, test$ph_saturated_paste, na.rm = TRUE)
 # EC
 train <- train[row.names(train) != "288352", ]
 train$ec_t <- log(train$ec_predict_one_to_two + 0.1)
-ec_glm <- glm(electrical_conductivity_satx ~ splines::ns(log(ec_predict_one_to_two + 0.1), 3) + clay_total + hdm, data = train, y = TRUE, family = Gamma(link = log))
+ec_glm <- glm(electrical_conductivity_satx ~ splines::ns(log(ec_predict_one_to_two + 0.1), 3) + clay_total, data = train, y = TRUE, family = Gamma(link = log))
 plot(ec_glm)
 termplot(ec_glm, partial.resid = TRUE)
 visreg::visreg(ec_glm, scale = "response", partial = TRUE)
@@ -198,7 +200,7 @@ caret::R2(ec_test, test$electrical_conductivity_satx, na.rm = TRUE)
 caret::RMSE(ec_test, test$electrical_conductivity_satx, na.rm = TRUE)
 plot(log(test$electrical_conductivity_satx + 0.1), log(ec_test + 0.1)); abline(0, 1)
 
-ec_rf <- randomForest(electrical_conductivity_satx ~ ec_predict_one_to_two + ph_h2o + clay_total, data = train, na.action = na.exclude)
+ec_rf <- randomForest(electrical_conductivity_satx ~ ec_predict_one_to_two + clay_total, data = train, na.action = na.exclude)
 caret::R2(ec_rf$predicted, ec_rf$y, na.rm = TRUE)
 caret::RMSE(ec_rf$predicted, ec_rf$y, na.rm = TRUE)
 plot(log(ec_rf$y + 0.1), log(ec_rf$predicted + 0.1)); abline(0, 1)
@@ -318,6 +320,7 @@ s_mps_sf <- st_as_sf(s_mps_sf,
 
 # save(ldm, spc, clhs_pkey, ph_lm, ec_glm, s_mps_l, s_mps_sf, file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
 load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
+
 
 ```
 
