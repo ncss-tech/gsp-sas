@@ -22,18 +22,19 @@ rasterOptions(maxmemory = 1e+09, chunksize = 1e+08, memfrac = 0.9)
 #set working directory
 
 ####setwd("E:/DSMFocus/Salinity/Covariates_ISRIC/ISRIC/CONUS")
-setwd("E:/DSMFocus/Salinity/Covariates_ISRIC/ISRIC/testset")
+#setwd("E:/DSMFocus/Salinity/Covariates_ISRIC/ISRIC/testset")
+setwd("K:/GSP/1km_ covariates/CONUS/landsat")
 getwd()
 
 ###Create Image Indices###
 
 ###read in layers and create predictors data frame
-predictors <- readGDAL("LB1_blue.tif")
-predictors$green <- readGDAL("LB2_green.tif")$band1
-predictors$red <- readGDAL("LB3_red.tif")$band1
-predictors$nir <- readGDAL("LB4_nir.tif")$band1
-predictors$swir1 <- readGDAL("LB5_swir1.tif")$band1
-predictors$swir2 <- readGDAL("LB6_swir2.tif")$band1
+predictors <- readGDAL("Landsat_B1_1km_average.tif")
+predictors$green <- readGDAL("Landsat_B2_1km_average.tif")$band1
+predictors$red <- readGDAL("Landsat_B3_1km_average.tif")$band1
+predictors$nir <- readGDAL("Landsat_B4_1km_average.tif")$band1
+predictors$swir1 <- readGDAL("Landsat_B5_1km_average.tif")$band1
+predictors$swir2 <- readGDAL("Landsat_B6_1km_average.tif")$band1
 predictors$blue <- predictors$band1
 predictors$band1 = NULL 
 summary(predictors)
@@ -111,6 +112,7 @@ hist(predictors$si3)
 predictors$si5 = sqrt(predictors$si5)
 hist(predictors$si5)
 
+#make raster objects
 ndvi <- raster(predictors, layer = 7)
 ndsi <- raster(predictors, layer = 8)
 si1 <- raster(predictors, layer = 9)
@@ -125,18 +127,21 @@ sr <- raster(predictors, layer = 17)
 crsi <- raster(predictors, layer = 18)
 bi <- raster(predictors, layer = 19)
 
+#stack image index rasters
+sinstack <- stack(ndvi, ndsi, si1, si2, si3, si4, si5, si6, savi, vssi, sr, crsi, bi)
 
 #########################################################################
 ###Prepare all covariates###
 
 #read in raster layers and create stack
+setwd("K:/GSP/1km_ covariates/CONUS")
 
 # read in raster layers from external layers and create list
 covlist <- list.files(pattern=".tif$")
-covlist
 
 # create raster stack
-cov_stack <- stack(covlist)
+tifstack <- stack(covlist) ##error in extents; valley depth (fixed), us_140_evc; contains all isric and nrcs covariates
+cov_stack <- stack(tifstack, sinstack)
 names(cov_stack)
 
 # Load RData file with lab data
