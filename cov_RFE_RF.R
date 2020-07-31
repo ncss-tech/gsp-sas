@@ -19,8 +19,8 @@ rm(required.packages, new.packages)
 # memory.limit(500000)
 ## Raster settings: adjust based on system
 rasterOptions(maxmemory = 1e+09, chunksize = 1e+08, memfrac = 0.9)
-#set working directory
 
+#set working directory
 ####setwd("E:/DSMFocus/Salinity/Covariates_ISRIC/ISRIC/CONUS")
 #setwd("E:/DSMFocus/Salinity/Covariates_ISRIC/ISRIC/testset")
 setwd("K:/GSP/1km_ covariates/CONUS/landsat")
@@ -138,6 +138,36 @@ setwd("K:/GSP/1km_ covariates/CONUS")
 
 # read in raster layers from external layers and create list
 covlist <- list.files(pattern=".tif$")
+
+#check extents
+me <- extent(raster(covlist[1]))
+mxmin <-  me@xmin
+mymin <- me@ymin
+mxmax <- me@xmax
+mymax <-  me@ymax
+
+for(r in covlist){
+  
+  ce <-  extent(raster(r))
+  cxmin <-  ce@xmin
+  cymin <- ce@ymin
+  cxmax <- ce@xmax
+  cymax <-  ce@ymax
+  
+  if(!cxmin == mxmin || !cymin == mymin || !cxmax == mxmax || !cymax == mymax){
+    
+    print(paste0(r, " extent does not match ", covlist[1]))
+  }
+}
+
+rs <- raster("B02CHE3_CONUS.tif")
+extent(rs)
+
+#fixlist <- list("gsp_longcurv_rs.tif","gsp_mrrtf2_rs.tif","gsp_mrvbf2_rs.tif","gsp_slopelength_rs.tif", "gsp_valleydepth_rs2.tif")
+fr <- raster("gsp_longcurv_rs.tif")
+#fs <- stack(fixlist)
+nr <- alignExtent(extent(rs), fr)
+extent(nr)
 
 # create raster stack
 tifstack <- stack(covlist) ##error in extents; valley depth (fixed), us_140_evc; contains all isric and nrcs covariates
