@@ -27,6 +27,7 @@ setwd("K:/GSP/1km_ covariates/CONUS/landsat")
 getwd()
 
 ###Create Image Indices###
+library(soilassessment)
 
 ###read in layers and create predictors data frame
 predictors <- readGDAL("Landsat_B1_1km_average.tif")
@@ -160,18 +161,26 @@ for(r in covlist){
   }
 }
 
-rs <- raster("B02CHE3_CONUS.tif")
-extent(rs)
-
 #fixlist <- list("gsp_longcurv_rs.tif","gsp_mrrtf2_rs.tif","gsp_mrvbf2_rs.tif","gsp_slopelength_rs.tif", "gsp_valleydepth_rs2.tif")
+
+#extent raster
+rs <- raster("B02CHE3_CONUS.tif")
+extent(rs) 
+
+#fix raster
 fr <- raster("gsp_longcurv_rs.tif")
-#fs <- stack(fixlist)
-nr <- alignExtent(extent(rs), fr)
+fr@data@min
+fr@data@max
+
+#resample fix raster using extent raster for parameters
+nr <- resample(fr, rs, method = "bilinear")
 extent(nr)
+nr@data@min
+nr@data@max
 
 # create raster stack
-tifstack <- stack(covlist) ##error in extents; valley depth (fixed), us_140_evc; contains all isric and nrcs covariates
-cov_stack <- stack(tifstack, sinstack)
+tifstack <- stack(covlist) ##error in extents
+cov_stack <- stack(tifstack, sinstack, nr)
 names(cov_stack)
 
 # Load RData file with lab data
