@@ -251,7 +251,6 @@ mu_agg <- within(mu_agg, {
   })
 
 # save(f_us, mu_us, mu_agg, file = "gsp_salinity_fetchGDB.RData")
-load(file = "gsp_salinity_fetchGDB.RData")
 write.csv(mu_agg, file = "gnatsgo_gsp_muaggatt.csv", row.names = FALSE)
 
 ```
@@ -262,6 +261,8 @@ write.csv(mu_agg, file = "gnatsgo_gsp_muaggatt.csv", row.names = FALSE)
 
 ```{r}
 
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/gsp_salinity_fetchGDB.RData")
+
 mu_agg <- within(mu_agg, {
   mukey   = as.numeric(ID)
   pmkind3 = as.integer(as.factor(pmkind2))
@@ -270,32 +271,41 @@ names(mu_agg)[1] <- "ID"
 
 gdalUtils::gdalwarp(
     srcfile = "D:/geodata/soils/gnatsgo_fy20_30m.tif",
-    dstfile = "D:/geodata/soils/gnatsgo_fy20_90m.tif",
+    dstfile = "D:/geodata/soils/gnatsgo_fy20_1km.tif",
+    t_srs = proj4string(rs), 
+    te = bbox(rs),
     r = "mode",
-    tr = c(90, 90),
+    tr = res(rs),
     ot = "Int32",
     verbose   = TRUE,
     overwrite = TRUE
 )
 
 
-library(raster)
+library(terra)
 
-r <- raster("D:/geodata/soils/gnatsgo_fy20_1000m.tif")
+r <- rast("D:/geodata/soils/gnatsgo_fy20_30m.tif")
 r2 <- r[1:100, 1:100, drop = FALSE]
 r2 <- ratify(r2)
 rat <- levels(r2)[[1]]
 levels(r) <- mu_agg
 
-vars <- c("pmkind3", "ph_r.i0-30", "ph_r.i30-100", "ec_r.i0-30", "ec_r.i30-100")[c(-1, - 2)]
+mat <- matrix(mu_agg[c("ID", "ec_r.i0-30")])
+mat <- cbind(mat[[1]] - 0.5, mat[[1]] + 0.5, mat[[2]])
+classify(x = r, rcl = mat, filename = "D:/geodata/soils/gnatsgo_fy20_30m_ec000030_v2.tif", overwrite = TRUE, wopt = list(gdal = c("COMPRESS=DEFLATE")))
+
+vars <- c("pmkind3", "ph_r.i0-30", "ph_r.i30-100", "ec_r.i0-30", "ec_r.i30-100")[c(4:5, 2:3)]
 lapply(vars, function(x) {
   cat(x, as.character(Sys.time()), "\n")
   deratify(r, att = x, 
-           filename = paste0("D:/geodata/soils/gnatsgo_fy20_1000m_", x, ".tif"),  
+           filename = paste0("D:/geodata/soils/gnatsgo_fy20_30m_", x, ".tif"),
            options = c("COMPRESS=DEFLATE"), 
            overwrite = TRUE, progress = "text" 
            )
   })
+
+
+pmkind <- raster("D:/geodata/soils/gnatsgo_fy20_1km_pmkind3.tif")
 
 
 tmap_pmkind <- tm_shape(pmkind, raster.downsample = FALSE) + 

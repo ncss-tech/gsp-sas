@@ -18,8 +18,8 @@ editor_options:
 library(DBI)
 
 con <- dbConnect(RSQLite::SQLite(), "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.sqlite")
-area <- read.csv("C:/Users/stephen.roecker/Nextcloud/data/ldm/lab_area.txt", stringsAsFactors = FALSE)
-dbCreateTable(con, "area", area)
+# area <- read.csv("C:/Users/stephen.roecker/Nextcloud/data/ldm/lab_area.txt", stringsAsFactors = FALSE)
+# dbCreateTable(con, "area", area)
 (ldm_names <- dbListTables(con))
 ldm <- lapply(ldm_names, function(x) dbReadTable(con , x))
 names(ldm) <- ldm_names
@@ -64,7 +64,7 @@ s <- s[with(s, order(corr_classdate, samp_classdate, decreasing = TRUE)), ]
 
 # soil profile collection object
 # optionally test for bad horizonation... flag, and remove
-  if (rmHzErrors) {
+  if (TRUE) {
     h.test <- plyr::ddply(h, 'pedon_key', function(d) {
       res <- aqp::hzDepthTests(top=d[['hzn_top']], bottom=d[['hzn_bot']])
       return(all(!res))
@@ -80,7 +80,7 @@ s <- s[with(s, order(corr_classdate, samp_classdate, decreasing = TRUE)), ]
 
     # keep track of those components with horizonation errors
     if (length(bad.ids) > 0)
-      assign('kssl.hz.problems', value=bad.ids, envir=soilDB.env)
+      assign('kssl.hz.problems', value=bad.ids)
   }
 
 library(aqp)
@@ -257,10 +257,11 @@ replaceHorizons(spc) <- h
 
 
 
-# mpspline
+# mpspline & weighted averages
 
 ```{r mps}
 
+# mpspline
 library(mpspline2)
 
 gsp_vars <- c("ph_saturated_paste", "electrical_conductivity_satx", "exchangeable_sodium", "sodium_absorption_ratio", "total_estimated_salts_satx")
@@ -301,6 +302,30 @@ s_mps_l <- lapply(gsp_vars, function(x) {
 names(s_mps_l) <- gsp_vars
 
 
+# weighted average
+s_wa <- aqp::segment(horizons(spc), intervals = c(0, 30, 100, 150), hzdepcols = c("hzn_top", "hzn_bot")) %>%
+  mutate(hzn_bot = ifelse(is.na(hzn_bot), hzn_top + 1, hzn_bot),
+         hzn_mid = hzn_bot - hzn_top,
+         pedon_key = as.character(pedon_key)
+         ) %>%
+  # values come back NA if weights (w) are missing
+  group_by(pedon_key, segment_id) %>%
+  summarize(ec_wa = weighted.mean(electrical_conductivity_satx, w = hzn_mid, na.rm = TRUE),
+            ph_wa = log10(weighted.mean(1/10^-ph_saturated_paste, w = hzn_mid, na.rm = TRUE)),
+            sar_wa = weighted.mean(sodium_absorption_ratio, w = hzn_mid, na.rm = TRUE)
+            ) %>%
+  ungroup() %>%
+  right_join(select(aqp::site(spc), pedon_key), by = "pedon_key") %>% 
+  # reshape() doesn't work with tibbles
+  as.data.frame()
+s_wa_w <- reshape(data = s_wa, direction = "wide", 
+                   idvar = "pedon_key", 
+                   v.names = c("ph_wa", "ec_wa", "sar_wa"), 
+                   timevar = "segment_id"
+                   )
+attributes(s_wa_w)$reshapeWide <- NULL
+
+
 # merge mpspline results
 s <- site(spc)
 s_mps <- merge(s,     s_mps_l$ph_saturated_paste, by = "pedon_key", all.x = TRUE, sort = FALSE)
@@ -308,6 +333,7 @@ s_mps <- merge(s_mps, s_mps_l$electrical_conductivity_satx, by = "pedon_key", al
 s_mps <- merge(s_mps, s_mps_l$exchangeable_sodium, by = "pedon_key", all.x = TRUE, sort = FALSE)
 s_mps <- merge(s_mps, s_mps_l$sodium_absorption_ratio, by = "pedon_key", all.x = TRUE, sort = FALSE)
 s_mps <- merge(s_mps, s_mps_l$total_estimated_salts_satx, by = "pedon_key", all.x = TRUE, sort = FALSE)
+s_mps <- merge(s_mps, s_wa_w, by = "pedon_key", all.x = TRUE, sort = FALSE)
 
 
 # sf object
