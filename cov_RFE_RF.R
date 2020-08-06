@@ -156,6 +156,7 @@ extent(tifstack)
 #set extent raster
 rs <- raster("B02CHE3_CONUS.tif")
 extent(rs) 
+plot(rs)
 
 #make a list of problem rasters (all rasters in list must have the same extent)
 setwd ("K:/GSP/1km_ covariates/CONUS/fix")
@@ -181,6 +182,15 @@ extent(raster("./out/us_140evc__majority.tif"))
 #stack fixed rasters
 fstack <- stack(outfiles)
 extent(fstack)
+
+#fix mlra layer
+mlra <- raster("K:/GSP/1km_ covariates/other/mlra_conus_rs_near.tif")
+extent(mlra)
+mlraf <- setExtent(mlra, rs, keepres = T, snap = F)
+extent(mlraf)
+writeRaster(mlraf, "K:/GSP/1km_ covariates/CONUS/fix/out/mlra_rs.tif", datatype = "INT2S", overwrite = T)
+test <- stack(mlraf, rs)
+extent(test)
 
 ### create raster stack of all covariates###
 cov_stack <- stack(tifstack, sinstack, fstack)
