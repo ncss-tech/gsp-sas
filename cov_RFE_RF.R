@@ -100,19 +100,6 @@ predictors$bi <- imageIndices(predictors$blue, predictors$green, predictors$red,
 summary(predictors$bi)
 hist(predictors$bi)
 
-##transform skewed indices 
-predictors$si1 = sqrt(predictors$si1)
-hist(predictors$si1)
-
-predictors$si2 = sqrt(predictors$si2)
-hist(predictors$si2)
-
-predictors$si3 = sqrt(predictors$si3)
-hist(predictors$si3)
-
-predictors$si5 = sqrt(predictors$si5)
-hist(predictors$si5)
-
 #make raster objects
 ndvi <- raster(predictors, layer = 7)
 ndsi <- raster(predictors, layer = 8)
@@ -134,57 +121,75 @@ sinstack <- stack(ndvi, ndsi, si1, si2, si3, si4, si5, si6, savi, vssi, sr, crsi
 #########################################################################
 ###Prepare all covariates###
 
-#read in raster layers and create stack
+#read in ISRIC CONUS raster layers and create stack
 setwd("K:/GSP/1km_ covariates/CONUS")
 
 # read in raster layers from external layers and create list
 covlist <- list.files(pattern=".tif$")
 
 #check extents
-me <- extent(raster(covlist[1]))
-mxmin <-  me@xmin
-mymin <- me@ymin
-mxmax <- me@xmax
-mymax <-  me@ymax
+#me <- extent(raster(covlist[1]))
+#mxmin <-  me@xmin
+#mymin <- me@ymin
+#mxmax <- me@xmax
+#mymax <-  me@ymax
 
-for(r in covlist){
+#for(r in covlist){
   
-  ce <-  extent(raster(r))
-  cxmin <-  ce@xmin
-  cymin <- ce@ymin
-  cxmax <- ce@xmax
-  cymax <-  ce@ymax
+  #ce <-  extent(raster(r))
+  #cxmin <-  ce@xmin
+  #cymin <- ce@ymin
+  #cxmax <- ce@xmax
+  #cymax <-  ce@ymax
   
-  if(!cxmin == mxmin || !cymin == mymin || !cxmax == mxmax || !cymax == mymax){
+  #if(!cxmin == mxmin || !cymin == mymin || !cxmax == mxmax || !cymax == mymax){
     
-    print(paste0(r, " extent does not match ", covlist[1]))
-  }
-}
+    #print(paste0(r, " extent does not match ", covlist[1]))
+  #}
+#}
 
-#fixlist <- list("gsp_longcurv_rs.tif","gsp_mrrtf2_rs.tif","gsp_mrvbf2_rs.tif","gsp_slopelength_rs.tif", "gsp_valleydepth_rs2.tif")
+#stack ISRIC CONUS covariates
+tifstack <- stack(covlist)
+extent(tifstack)
 
-#extent raster
+###fix other rasters with extent issues###
+#set extent raster
 rs <- raster("B02CHE3_CONUS.tif")
 extent(rs) 
 
-#fix raster
-fr <- raster("gsp_longcurv_rs.tif")
-fr@data@min
-fr@data@max
+#make a list of problem rasters (all rasters in list must have the same extent)
+setwd ("K:/GSP/1km_ covariates/CONUS/fix")
+outpath <- "K:/GSP/1km_ covariates/CONUS/fix/out/"
+#summary(raster("K:/GSP/1km_ covariates/CONUS/fix/us_140evc__majority.tif"))
+dir.create(outpath)
+fixlist <- list.files(pattern="tif$")
+outfiles <- paste0(outpath, fixlist) 
+extension(outfiles) <- 'tif'
+extent(raster("gsp_slopelength_rs.tif"))
 
-#resample fix raster using extent raster for parameters
-nr <- resample(fr, rs, method = "bilinear")
-extent(nr)
-nr@data@min
-nr@data@max
+#fix extent 
+for(i in 1:length(fixlist)){
+    r <- raster(fixlist[i])
+    fr <- setExtent(r, rs, keepres = T, snap = F)
+    writeRaster(fr, outfiles[i], overwrite = T)
+    print(outfiles[i])
+  }
 
-# create raster stack
-tifstack <- stack(covlist) ##error in extents
-cov_stack <- stack(tifstack, sinstack, nr)
+#check fix
+extent(raster("./out/us_140evc__majority.tif"))
+
+#stack fixed rasters
+fstack <- stack(outfiles)
+extent(fstack)
+
+### create raster stack of all covariates###
+cov_stack <- stack(tifstack, sinstack, fstack)
 names(cov_stack)
+extent(cov_stack)
 
+###Prepare point data###
 # Load RData file with lab data
-load(file = "E:/DSMFocus/Salinity/LDM-compact_20200708.RData")
+load(file = "K:/GSP/scripts/LDM-compact_20200709.RData")
 
 #add location info to training data
 site_sub <- site(spc)[ ,c('pedon_key','latitude_std_decimal_degrees','longitude_std_decimal_degrees')]
@@ -215,7 +220,7 @@ shp.pts.proj <- spTransform(shp.pts, CRS(cov.proj))
 plot(projgrid)
 plot(shp.pts.proj, add=TRUE)
 
-
+###extract covariates to points###
 # Parallelized extract: (larger datasets)
 cpus <- detectCores(all.tests = FALSE, logical = TRUE)-1
 sfInit(parallel=TRUE, cpus=cpus)
@@ -245,6 +250,13 @@ saveRDS(pts.ext, "pts_ext_covs.rds")
 
 #writeOGR(gsppointscl, ".", "gsppoints", driver="ESRI Shapefile")
 
+
+
+############ADD IN DATA SPLITTING HERE############
+
+
+
+
 ##clean out memory
 gc()
 
@@ -255,8 +267,8 @@ gc()
 
 ##data prep
 
-#read in RDS file with points that include extracted covariate values
-comp <- as.data.frame(readRDS("points.rds"))
+#read in points that include extracted covariate values
+comp <- as.data.frame(readRDS("pts_ext_covs.rds"))
 comp <- as.data.frame(pts.ext)
 
 ## testing block with smaller dataset ##
@@ -276,10 +288,6 @@ names(comp)
 names(comp)[c(1)] <- c('Prop')
 names(comp)
 
-#check levels of prop column
-###There are no levels because it's not classed
-levels(comp$Prop)
-
 #remove NA values from Prop
 compcl <- comp[complete.cases(comp), ]
 summary (compcl)
@@ -297,7 +305,7 @@ length(subsets)
 
 #set seeds to get reproducible results when the process in parallel
 set.seed(915)
-seeds <- vector(mode = "list", length=156) #length is 1 more than number of covariates CHANGE AS NEEDED
+seeds <- vector(mode = "list", length=176) #length is 1 more than number of covariates CHANGE AS NEEDED
 for(i in 1:15) seeds[[i]] <- sample.int(1000,16) # 1:x x=folds*repeats (for 5 folds & 3 repeats x=15) and sample.int(1000,x+1)
 seeds[[16]] <- sample.int(1000, 1) #seeds = folds*repeats plus 1
 
