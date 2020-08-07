@@ -269,13 +269,15 @@ mu_agg <- within(mu_agg, {
 })
 names(mu_agg)[1] <- "ID"
 
+mlra <- "D:/geodata/project_data/gsp-sas/1km covariates/Other/mlra_rs.tif"
+r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/Other/gnatsgo_pmkind.tif")
 gdalUtils::gdalwarp(
-    srcfile = "D:/geodata/soils/gnatsgo_fy20_30m.tif",
-    dstfile = "D:/geodata/soils/gnatsgo_fy20_1km.tif",
-    t_srs = proj4string(rs), 
-    te = bbox(rs),
-    r = "mode",
-    tr = res(rs),
+    srcfile = mlra,
+    dstfile = gsub(".tif", "_v2.tif", mlra),
+    t_srs = proj4string(r), 
+    te = bbox(r),
+    r = "near",
+    tr = res(r),
     ot = "Int32",
     verbose   = TRUE,
     overwrite = TRUE

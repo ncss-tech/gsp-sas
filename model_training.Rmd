@@ -22,9 +22,10 @@ library(raster)
 # ISRIC CONUS
 path <- "D:/geodata/project_data/gsp-sas/1km covariates/ISRIC/CONUS"
 lf <- list.files(path)
+lf <- lf[grepl(".tif$", lf)]
 isric_rs <- stack(file.path(path, lf))
 names(isric_rs) <- gsub("_CONUS.tif|.tif", "", lf)
-isric_names <- names(isric_rs)
+isric_vars <- names(isric_rs)
 
 
 # Other CONUS
@@ -39,7 +40,23 @@ lf  <- lf[idx]
 
 other_rs <- stack(file.path(path, lf))
 names(other_rs) <- gsub(".tif", "", lf)
-other_names <- names(other_rs)
+other_vars <- names(other_rs)
+
+
+# SSURGO CONUS
+path <- "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO"
+lf <- list.files(path)
+lf <- lf[grepl(".tif$", lf)]
+# find matching extents
+other_extent <- sapply(file.path(path, lf), function(x) paste(extent(raster(x))))
+idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
+idx <- which(other_extent == idx)
+lf  <- lf[idx]
+
+ssurgo_rs <- stack(file.path(path, lf))
+names(ssurgo_rs) <- gsub(".tif", "", lf)
+ssurgo_vars <- names(ssurgo_rs)
+
 
 
 # Extract geodata
@@ -47,26 +64,17 @@ library(sf)
 
 load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
 
-rs <- stack(isric_rs, other_rs)
+rs <- stack(isric_rs, other_rs, ssurgo_rs)
 data <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 data <- within(data, {
-  pmkind             = as.factor(pmkind)
+  gnatsgo_pmkind     = ifelse(is.na(gnatsgo_pmkind), "missing", gnatsgo_pmkind)
+  gnatsgo_pmkind     = as.factor(gnatsgo_pmkind)
   pm_lu_uids_v2_mode = as.factor(pm_lu_uids_v2_mode)
-  
+  mlra_rs            = as.factor(mlra_rs)
   })
 
 
-# Rename KSSL variables
-vars <- c("ph_saturated_paste", "electrical_conductivity_satx", "exchangeable_sodium", "sodium_absorption_ratio", "total_estimated_salts_satx")
-vars2 <- c("ph", "ec", "esp", "sar", "tss")
-for (i in 1:5) {
-  x    = paste0(vars[i], ".")
-  x2   = paste0(vars2[i], "_")
-  idx  = grep(x, names(data))
-  names(data)[idx] = gsub(x, x2, names(data[idx]))
-}
-
-# save(data, isric_names, other_names, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+# save(data, isric_vars, other_vars, ssurgo_vars, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
 
 ```
 
@@ -87,7 +95,7 @@ clhs_pkey <- data[clhs_idx, "pedon_key"]
 train <- subset(data, pedon_key %in% clhs_pkey)
 test  <- subset(data, ! pedon_key %in% clhs_pkey)
 
-# save(data, train, test, clhs_pkey, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+# save(data, train, test, clhs_pkey, isric_vars, other_vars, ssurgo_vars, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
 
 ```
 
@@ -101,7 +109,7 @@ load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/data.RData
 
 
 # subset
-idx    <- grep("ec_000_030_cm|B02CHE3", names(train))
+idx    <- grep("ec_", data)
 train2 <- train[c(idx[1], idx[2]:ncol(train))]
 train2 <- train2[idx * -1]
 
@@ -141,7 +149,7 @@ rf.RFE <- rfe(x = x,
 
 # Error in rfe.default(x = compcl[, -1], y = compcl$Prop, sizes = subsets,  :  Bad seeds: the seed object should be a list of length 16 with 15 integer vectors of size 175 and the last list element having a single integer 
  
-
+# save(data, train, test, test30, clhs_pkey, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
 
 ```
 
@@ -151,14 +159,31 @@ rf.RFE <- rfe(x = x,
 
 ```{r}
 
+library(caret)
+
+load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+
 # no CV
-ec_rt <- train(ec_000_030_cm ~ ., data = train2, 
+vars <- c("ec_ptf.000_030_cm", 
+          isric_vars, 
+          other_vars, 
+          ssurgo_vars[ssurgo_vars %in% c("gnatsgo_pmkind", "mlra_rs")]
+          )
+train2 <- train[vars]
+
+ec_rt2 <- train(ec_ptf.000_030_cm ~ ., data = train2, 
                method = "ranger", quantreg = TRUE, na.action = na.exclude,
+               # respect.unordered.factors = TRUE,
                importance = "permutation", 
-               trControl = trainControl(method = "none"), 
+               trControl = # trainControl(method = "cv", number = 10, repeats = 5, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE) 
+               trainControl(method = "none"), 
                tuneGrid = expand.grid(.mtry = round(ncol(train2[-1]) / 3), .splitrule = "variance", .min.node.size = c(5)
 )
                )
+test = ec_rt2$finalModel$variable.importance
+test = data.frame(names(test), test)
+row.names(test) <- NULL
+View(test)
 
 
 # CV
@@ -178,7 +203,7 @@ ec_rf <- train(ec_000_030_cm ~ ., data = train2,
 
 # SSURGO vs KSSL at 1000-meters
 caret::R2(data$ph_000030, data$ph_saturated_paste.000_030_cm, na.rm = TRUE)
-caret::R2(data$ec_000030, data$electrical_conductivity_satx.000_030_cm, na.rm = TRUE)
+caret::R2(data$ec_000_030_cm, data$gnatsgo_ec_000030, na.rm = TRUE)
 
 ```
 
