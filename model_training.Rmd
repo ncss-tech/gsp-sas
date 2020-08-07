@@ -138,6 +138,11 @@ rf.RFE <- rfe(x = x,
               rfeControl = ctrl.RFE
               )
 
+
+# Error in rfe.default(x = compcl[, -1], y = compcl$Prop, sizes = subsets,  :  Bad seeds: the seed object should be a list of length 16 with 15 integer vectors of size 175 and the last list element having a single integer 
+ 
+
+
 ```
 
 
