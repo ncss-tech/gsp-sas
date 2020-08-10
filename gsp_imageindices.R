@@ -4,21 +4,138 @@
 ########################################################################################
 ###session set up
 
-install.packages(c("raster", "sp", "rgdal", "car", "carData", "dplyr", "spacetime",
-                   "gstat", "automap", "randomForest", "fitdistrplus", "e1071", "caret",
-                   "soilassessment", "soiltexture", "GSIF", "aqp", "plyr", "Hmisc",
-                   "corrplot", "factoextra", "spup", "purrr", "lattice", "ncf", 
-                   "npsurvSS", "qrnn", "nnet", "mda", "RColorBrewer", "vcd", "readxls"
-                   , "maptools", "neuralnet","psych", "tidyr"))
+libs <- c("rgdal", "raster", "soilassessment")
+lapply(libs, require, character.only = TRUE)
 
-#package "lsei" not available
-
-library(sp); library(foreign); library(rgdal); library(car);library(carData); library(maptools); library(spacetime); library(gstat); library(automap); library(randomForest);library(fitdistrplus); library(e1071); library(caret); library(raster); library(soilassessment); library(soiltexture); library(GSIF); library(aqp); library(plyr); library(Hmisc); library(corrplot); library(factoextra); library(spup); library(purrr); library(lattice); library(ncf); library(npsurvSS); library(nnet); library(class); library(mda); library(RColorBrewer); library(vcd); library(grid); library(neuralnet);library(readxl); library(psych); library(qrnn); library(dplyr); library (tidyr)
-
-#library(lsei)
-
-setwd("E:\\GSP\\1km_ covariates\\spectral")
+# setwd("D:\\GSP\\1km_ covariates\\spectral")
 getwd()
+
+
+# ISRIC 1km layers
+vars <- c("REDL00", "NIRL00", "SW1L00", "SW2L00", "REDL14", "NIRL14", "SW1L14", "SW2L14")
+path <- "D:/geodata/project_data/gsp-sas/1km covariates/ISRIC/CONUS"
+lf   <- list.files(path = path, pattern = ".tif$")
+idx <- sapply(vars, function(x) grep(x, lf))
+
+il00 <- stack(lapply(file.path(path, lf[idx][1:4]), raster))
+il00 <- stack(il00)
+names(il00) <- vars[1:4]
+
+il14 <- stack(lapply(file.path(path, lf[idx][5:8]), raster))
+il14 <- stack(il14)
+names(il14) <- vars[5:8]
+
+
+
+# Other 1km layers
+vars <- expand.grid(source = "Landsat_B",
+                    band   = c(1:6),
+                    method = c("average"), #, "max"),
+                    stringsAsFactors = FALSE
+                    )
+vars <- with(vars, paste0(source, band, "_1km_", method))
+path <- "D:/geodata/project_data/gsp-sas/1km covariates/Other"
+lf   <- list.files(path = path, pattern = ".tif$")
+idx <- sapply(vars, function(x) grep(x, lf))
+
+ol <- stack(lapply(file.path(path, lf[idx]), raster))
+ol <- stack(ol)
+names(ol) <- vars
+
+
+
+# soilassessment indices
+sa_indices <- function(blue, green, red, nir, swir1, swir2) {
+  
+  NSI  <- imageIndices(nir   = nir, 
+                       swir1 = swir1, 
+                       swir2 = swir2, 
+                       index = "NSI"
+                       )
+  SI4 <- imageIndices(nir   = nir, 
+                      swir1 = swir1, 
+                      index = "SI4"
+                      )
+  SAVI <- imageIndices(red   = red, 
+                       nir   = nir, 
+                       index = "SAVI"
+                       )
+  NDSI <- imageIndices(red   = red, 
+                       nir   = nir, 
+                       index = "NDSI"
+                       )
+  NDVI <- imageIndices(red   = red, 
+                       nir   = nir, 
+                       index = "NDVI"
+                       )
+  ROCK <- imageIndices(nir   = nir, 
+                       swir1 = swir1, 
+                       index = "ROCK"
+                       )
+  
+  rs <- stack(NSI, SI4, SAVI, NDSI, NDVI, ROCK)
+  names(rs) <- c("NSI", "SI4", "SAVI", "NDSI", "NDVI", "ROCK")
+  
+  if (length(blue) > 0 & length(green) > 0 & length(red) > 0) {
+    
+    SI1  <- sqrt(green * red)
+    SI2  <- sqrt(blue * red)
+    SI3  <- sqrt((green)^2 + (red)^2)
+    SI5  <- blue / red
+    SI6  <- red * nir / green
+    VSSI <- 2 * green - 5 * (red + nir)
+    SR   <- (green - red)/(blue + red)
+    
+    rs2  <- stack(SI1, SI2, SI3, SI5, SI6, VSSI, SR)
+    names(rs2) <- c("SI1", "SI2", "SI3", "SI5", "SI6", "VSSI", "SR")
+    rs   <- stack(rs, rs2)
+    }
+  return(rs)
+}
+
+il00_indices <- sa_indices(
+  red   = il00$REDL00, 
+  nir   = il00$NIRL00, 
+  swir1 = il00$SW1L00, 
+  swir2 = il00$SW2L00
+  )
+
+il14_indices <- sa_indices(
+  red   = il14$REDL14, 
+  nir   = il14$NIRL14, 
+  swir1 = il14$SW1L14, 
+  swir2 = il14$SW2L14
+  )
+
+ol_indices <- sa_indices(
+  blue  = ol$Landsat_B1_1km_average,
+  green = ol$Landsat_B2_1km_average,
+  red   = ol$Landsat_B3_1km_average, 
+  nir   = ol$Landsat_B4_1km_average, 
+  swir1 = ol$Landsat_B5_1km_average, 
+  swir2 = ol$Landsat_B6_1km_average
+)
+
+lapply(names(il00_indices), function(x){
+  writeRaster(il00_indices[[x]], 
+              filename = file.path(path, paste0(x, "L00.tif")), 
+              progress = TRUE
+              )
+})
+
+lapply(names(il14_indices), function(x){
+  writeRaster(il14_indices[[x]], 
+              filename = file.path(path, paste0(x, "L14.tif")), 
+              progress = TRUE
+              )
+})
+
+lapply(names(ol_indices), function(x) {
+  writeRaster(ol_indices[[x]],
+              filename = file.path(path, paste0("landsat_", x, "_1km_average.tif")),
+              progress = TRUE
+              )
+})
 
 
 ###read in layers and create predictors data frame

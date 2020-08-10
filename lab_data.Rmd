@@ -350,6 +350,8 @@ s_mps_sf <- st_as_sf(s_mps_sf,
                  crs = 4326
                  )
 
+write_sf(s_mps_sf, dsn = "s_mps_sf.shp", layer = "ldm")
+
 # save(ldm, spc, clhs_pkey, ph_lm, ec_glm, s_mps_l, s_wa_w, s_mps_sf, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
 load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
 

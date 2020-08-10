@@ -234,18 +234,18 @@ mu_agg <- within(mu_agg, {
   pmkind2[grepl("till|Till|Drift", pmkind2)] = "Till"
   pmkind2[grepl("Glaciofluvial deposits|Outwash", pmkind2)] = "Outwash"
   pmkind2[grepl("Glaciolacustrine deposits", pmkind2)] = "Lacustrine deposits"
-  pmkind2[grepl("Loess", pmkind2, ignore.case = TRUE)] = "Loess"
   # Colluvium
   pmkind2[grepl("Valley side alluvium|Slope alluvium|Creep deposits|Pedisediment|Cryoturbate|Colluvium", pmkind2)] = "Colluvium"
   pmkind2[grepl("spread|slide|Earthflow|flow deposits|Debris|Talus|rock|Scree|mass movement", pmkind2, ignore.case = TRUE)] = "Mass movement deposits"
   # Ash
   pmkind2[grepl("Pyroclastic|Tephra|Ash flow|volcanic ash|Lahar deposits|Pyroclastic flow|Tuff|Scoria|Cinders|Pumice", pmkind2, ignore.case = TRUE)] = "Volcanic ash"
-  # Other
-  pmkind2[grepl("Eolian|Beach sand", pmkind2)] = "Eolian deposits"
   # Alluvium
   pmkind2[grepl("Overbank deposits|Alluvium", pmkind2)] = "Alluvium"
   # Lacustrine
   pmkind2[grepl("Backswamp deposit|Diatomaceous earth|Diamicton|Marl|Lacustrine", pmkind2)] = "Lacustrine deposits"
+  # Other
+  pmkind2[grepl("Loess", pmkind2, ignore.case = TRUE)] = "Loess"
+  pmkind2[grepl("Eolian|Beach sand", pmkind2)] = "Eolian deposits"
   # Organic
   pmkind2[grepl("organic|Organic|Coprogenic material", pmkind2)] = "Organic material"
   })
