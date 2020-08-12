@@ -12,19 +12,23 @@ getwd()
 
 
 # ISRIC 1km layers
-vars <- c("REDL00", "NIRL00", "SW1L00", "SW2L00", "REDL14", "NIRL14", "SW1L14", "SW2L14")
+vars <- c("REDL00", "NIRL00", "SW1L00", "SW2L00", "REDL14", "NIRL14", "SW1L14", "SW2L14", 
+          paste0("T", sprintf("%02d", 1:12), "MSD3"),
+          paste0("T", sprintf("%02d", 1:12), "MOD3"),
+          paste0("N", sprintf("%02d", 1:12), "MSD3"),
+          paste0("N", sprintf("%02d", 1:12), "MOD3")
+          )
 path <- "D:/geodata/project_data/gsp-sas/1km covariates/ISRIC/CONUS"
 lf   <- list.files(path = path, pattern = ".tif$")
-idx <- sapply(vars, function(x) grep(x, lf))
+idx  <- sapply(vars, function(x) grep(x, lf))
+il   <- stack(lapply(file.path(path, lf[idx]), raster))
+names(il) <- vars
 
-il00 <- stack(lapply(file.path(path, lf[idx][1:4]), raster))
-il00 <- stack(il00)
-names(il00) <- vars[1:4]
-
-il14 <- stack(lapply(file.path(path, lf[idx][5:8]), raster))
-il14 <- stack(il14)
-names(il14) <- vars[5:8]
-
+il00   <- il[[1:4]]
+il14   <- il[[5:8]]
+ilmsd3 <- il[[9:length(vars)]]
+NAvalue(ilmsd3) <- -32768
+# ilmsd3_t <- as(ilmsd3[[c(13:24, 37:48)]], "SpatRaster")
 
 
 # Other 1km layers
@@ -107,6 +111,14 @@ il14_indices <- sa_indices(
   swir2 = il14$SW2L14
   )
 
+ilmsd3_indices <- c(
+  min = min(ilmsd3_t),
+  max = max(ilmsd3_t),
+  avg = mean(ilmsd3_t),
+  range = diff(range(ilmsd3_t)),
+  cv  = stdev(ilmsd3_t) / mean(ilmsd3_t) * 100 
+  )
+
 ol_indices <- sa_indices(
   blue  = ol$Landsat_B1_1km_average,
   green = ol$Landsat_B2_1km_average,
@@ -116,26 +128,51 @@ ol_indices <- sa_indices(
   swir2 = ol$Landsat_B6_1km_average
 )
 
-lapply(names(il00_indices), function(x){
+ol_pca  <- RStoolbox::rasterPCA(ol, nSamples = 2000, spca = TRUE, progress = "text")
+ilmsd3_pca <- RStoolbox::rasterPCA(ilmsd3, nSamples = 2000, nComp = 10, spca = TRUE, progress = "text")
+
+lapply(names(il00_indices), function(x) {
   writeRaster(il00_indices[[x]], 
               filename = file.path(path, paste0(x, "L00.tif")), 
-              progress = TRUE
+              progress = "text"
               )
 })
 
-lapply(names(il14_indices), function(x){
+lapply(names(il14_indices), function(x) {
   writeRaster(il14_indices[[x]], 
               filename = file.path(path, paste0(x, "L14.tif")), 
-              progress = TRUE
+              progress = "text"
               )
+})
+
+lapply(names(ilmsd3_indices), function(x) {
+  writeRaster(ilmsd3_indices[[x]], 
+              filename = file.path(path, paste0("MOD11A2_", x, ".tif")),
+              progress = "text"
+              )
+})
+
+lapply(names(ilmsd3_pca$map), function(x) {
+  writeRaster(ilmsd3_pca$map[[x]], 
+              filename = file.path(path, paste0("MOD11A2_", x, ".tif")),
+              progress = "text"
+  )
 })
 
 lapply(names(ol_indices), function(x) {
   writeRaster(ol_indices[[x]],
               filename = file.path(path, paste0("landsat_", x, "_1km_average.tif")),
-              progress = TRUE
+              progress = "text"
               )
 })
+
+lapply(names(ol_pca2$map), function(x) {
+  writeRaster(ol_pca2$map[[x]],
+              filename = file.path(path, paste0("landsat_", x, "_1km_average.tif")),
+              progress = "text"
+  )
+})
+
 
 
 ###read in layers and create predictors data frame

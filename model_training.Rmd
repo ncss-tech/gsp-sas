@@ -64,15 +64,16 @@ library(sf)
 
 load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
 
-rs <- stack(isric_rs, other_rs, ssurgo_rs)
+rs   <- stack(isric_rs, other_rs, ssurgo_rs)
 data <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 data <- within(data, {
   gnatsgo_pmkind[is.na(gnatsgo_pmkind)] = "missing"
   gnatsgo_pmkind     = as.factor(gnatsgo_pmkind)
+  mlra_rs[is.na(mlra_rs)] = "missing"
   mlra_rs            = as.factor(mlra_rs)
   })
 
-# save(data, isric_vars, other_vars, ssurgo_vars, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+# save(data, isric_vars, other_vars, ssurgo_vars, clhs_pkey, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
 
 ```
 
@@ -187,9 +188,9 @@ load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_d
 
 # no CV
 
-vars <- c("ec_ptf.000_030_cm", 
-          isric_vars, 
-          other_vars, 
+vars <- c("ec_ptf.000_030_cm",
+          isric_vars[! grepl("MSD3|MOD3|MOD4|MOD5|P[0-9][0-9]CHE3|VW[1-6]MOD1|...L00|...L14", isric_vars)], 
+          other_vars[! grepl("Landsat_B", other_vars)], 
           ssurgo_vars[ssurgo_vars %in% c("gnatsgo_pmkind", "mlra_rs")]
           )
 train2 <- train[vars]
