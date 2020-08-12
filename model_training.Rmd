@@ -170,7 +170,7 @@ rf.RFE <- rfe(x = x,
               )
 
 
-# Error in rfe.default(x = compcl[, -1], y = compcl$Prop, sizes = subsets,  :  Bad seeds: the seed object should be a list of length 16 with 15 integer vectors of size 175 and the last list element having a single integer 
+# http://www.itgo.me/a/2164573104609813273/r-carets-rfe-error-in-task-1-failed-rfe-is-expecting-184-importance-val
  
 # save(data, train, test, test30, clhs_pkey, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
 
@@ -189,7 +189,7 @@ load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_d
 # no CV
 
 vars <- c("ec_ptf.000_030_cm",
-          isric_vars[! grepl("MSD3|MOD3|MOD4|MOD5|P[0-9][0-9]CHE3|VW[1-6]MOD1|...L00|...L14", isric_vars)], 
+          isric_vars[! grepl("MSD3|MOD3|MOD4|MOD5|P[0-9][0-9]CHE3|VW[1-6]MOD1|...L00|...L14|^L00_|^L14_", isric_vars)], 
           other_vars[! grepl("Landsat_B", other_vars)], 
           ssurgo_vars[ssurgo_vars %in% c("gnatsgo_pmkind", "mlra_rs")]
           )

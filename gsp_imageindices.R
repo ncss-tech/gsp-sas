@@ -49,7 +49,7 @@ names(ol) <- vars
 
 
 # soilassessment indices
-sa_indices <- function(blue, green, red, nir, swir1, swir2) {
+sa_indices <- function(blue = NULL, green =  NULL, red = NULL, nir = NULL, swir1 = NULL, swir2 = NULL) {
   
   NSI  <- imageIndices(nir   = nir, 
                        swir1 = swir1, 
@@ -80,7 +80,7 @@ sa_indices <- function(blue, green, red, nir, swir1, swir2) {
   rs <- stack(NSI, SI4, SAVI, NDSI, NDVI, ROCK)
   names(rs) <- c("NSI", "SI4", "SAVI", "NDSI", "NDVI", "ROCK")
   
-  if (length(blue) > 0 & length(green) > 0 & length(red) > 0) {
+  if (!is.null(blue) & !is.null(green) & !is.null(red)) {
     
     SI1  <- sqrt(green * red)
     SI2  <- sqrt(blue * red)
@@ -97,19 +97,37 @@ sa_indices <- function(blue, green, red, nir, swir1, swir2) {
   return(rs)
 }
 
+
+
+path <- "D:/geodata/project_data/gsp-sas/1km covariates/ISRIC/CONUS"
+
 il00_indices <- sa_indices(
   red   = il00$REDL00, 
   nir   = il00$NIRL00, 
   swir1 = il00$SW1L00, 
   swir2 = il00$SW2L00
   )
+lapply(names(il00_indices), function(x) {
+  writeRaster(il00_indices[[x]], 
+              filename = file.path(path, paste0("L00_", x, ".tif")), 
+              progress = "text"
+  )
+})
+
 
 il14_indices <- sa_indices(
   red   = il14$REDL14, 
   nir   = il14$NIRL14, 
   swir1 = il14$SW1L14, 
   swir2 = il14$SW2L14
+)
+lapply(names(il14_indices), function(x) {
+  writeRaster(il14_indices[[x]], 
+              filename = file.path(path, paste0("L14_", x, ".tif")), 
+              progress = "text"
   )
+})
+
 
 ilmsd3_indices <- c(
   min = min(ilmsd3_t),
@@ -117,7 +135,25 @@ ilmsd3_indices <- c(
   avg = mean(ilmsd3_t),
   range = diff(range(ilmsd3_t)),
   cv  = stdev(ilmsd3_t) / mean(ilmsd3_t) * 100 
+)
+lapply(names(ilmsd3_indices), function(x) {
+  writeRaster(ilmsd3_indices[[x]], 
+              filename = file.path(path, paste0("MOD11A2_", x, ".tif")),
+              progress = "text"
   )
+})
+
+ilmsd3_pca <- RStoolbox::rasterPCA(ilmsd3, nSamples = 2000, nComp = 10, spca = TRUE, progress = "text")
+lapply(names(ilmsd3_pca$map), function(x) {
+  writeRaster(ilmsd3_pca$map[[x]], 
+              filename = file.path(path, paste0("MOD11A2_", x, ".tif")),
+              progress = "text"
+  )
+})
+
+
+
+path <- "D:/geodata/project_data/gsp-sas/1km covariates/Other"
 
 ol_indices <- sa_indices(
   blue  = ol$Landsat_B1_1km_average,
@@ -127,47 +163,16 @@ ol_indices <- sa_indices(
   swir1 = ol$Landsat_B5_1km_average, 
   swir2 = ol$Landsat_B6_1km_average
 )
-
-ol_pca  <- RStoolbox::rasterPCA(ol, nSamples = 2000, spca = TRUE, progress = "text")
-ilmsd3_pca <- RStoolbox::rasterPCA(ilmsd3, nSamples = 2000, nComp = 10, spca = TRUE, progress = "text")
-
-lapply(names(il00_indices), function(x) {
-  writeRaster(il00_indices[[x]], 
-              filename = file.path(path, paste0(x, "L00.tif")), 
-              progress = "text"
-              )
-})
-
-lapply(names(il14_indices), function(x) {
-  writeRaster(il14_indices[[x]], 
-              filename = file.path(path, paste0(x, "L14.tif")), 
-              progress = "text"
-              )
-})
-
-lapply(names(ilmsd3_indices), function(x) {
-  writeRaster(ilmsd3_indices[[x]], 
-              filename = file.path(path, paste0("MOD11A2_", x, ".tif")),
-              progress = "text"
-              )
-})
-
-lapply(names(ilmsd3_pca$map), function(x) {
-  writeRaster(ilmsd3_pca$map[[x]], 
-              filename = file.path(path, paste0("MOD11A2_", x, ".tif")),
-              progress = "text"
-  )
-})
-
 lapply(names(ol_indices), function(x) {
   writeRaster(ol_indices[[x]],
               filename = file.path(path, paste0("landsat_", x, "_1km_average.tif")),
               progress = "text"
-              )
+  )
 })
 
-lapply(names(ol_pca2$map), function(x) {
-  writeRaster(ol_pca2$map[[x]],
+ol_pca     <- RStoolbox::rasterPCA(ol, nSamples = 2000, spca = TRUE, progress = "text")
+lapply(names(ol_pca$map), function(x) {
+  writeRaster(ol_pca$map[[x]],
               filename = file.path(path, paste0("landsat_", x, "_1km_average.tif")),
               progress = "text"
   )
