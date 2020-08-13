@@ -18,8 +18,8 @@ editor_options:
 library(DBI)
 
 con <- dbConnect(RSQLite::SQLite(), "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.sqlite")
-area <- read.csv("C:/Users/stephen.roecker/Nextcloud/data/ldm/lab_area.txt", stringsAsFactors = FALSE)
-dbCreateTable(con, "area", area)
+# area <- read.csv("C:/Users/stephen.roecker/Nextcloud/data/ldm/lab_area.txt", stringsAsFactors = FALSE)
+# dbCreateTable(con, "area", area)
 (ldm_names <- dbListTables(con))
 ldm <- lapply(ldm_names, function(x) dbReadTable(con , x))
 names(ldm) <- ldm_names
@@ -64,7 +64,7 @@ s <- s[with(s, order(corr_classdate, samp_classdate, decreasing = TRUE)), ]
 
 # soil profile collection object
 # optionally test for bad horizonation... flag, and remove
-  if (rmHzErrors) {
+  if (TRUE) {
     h.test <- plyr::ddply(h, 'pedon_key', function(d) {
       res <- aqp::hzDepthTests(top=d[['hzn_top']], bottom=d[['hzn_bot']])
       return(all(!res))
@@ -80,8 +80,9 @@ s <- s[with(s, order(corr_classdate, samp_classdate, decreasing = TRUE)), ]
 
     # keep track of those components with horizonation errors
     if (length(bad.ids) > 0)
-      assign('kssl.hz.problems', value=bad.ids, envir=soilDB.env)
+      assign('kssl.hz.problems', value=bad.ids)
   }
+
 
 library(aqp)
 h <- h[h$pedon %in% s$pedon_key, ]
@@ -245,8 +246,11 @@ caret::R2(h$electrical_conductivity_satx, h$ec_ptf, na.rm = TRUE)
 h$ph_ptf <- predict(ph_lm, newdata = h)
 h$ec_ptf <- predict(ec_glm, newdata = h, type = "response")
 h <- within(h, {
-  ph_saturated_paste = ifelse(is.na(ph_saturated_paste), ph_ptf, ph_saturated_paste)
-  electrical_conductivity_satx = ifelse(is.na(electrical_conductivity_satx), ec_ptf, electrical_conductivity_satx)
+  ph_ptf = ifelse(is.na(ph_saturated_paste), ph_ptf, ph_saturated_paste)
+  ec_ptf = ifelse(is.na(electrical_conductivity_satx), ec_ptf, electrical_conductivity_satx)
+  sar    = sodium_absorption_ratio
+  esp    = exchangeable_sodium
+  tss    = total_estimated_salts_satx
 })
 
 replaceHorizons(spc) <- h
@@ -257,13 +261,14 @@ replaceHorizons(spc) <- h
 
 
 
-# mpspline
+# mpspline & weighted averages
 
 ```{r mps}
 
+# mpspline
 library(mpspline2)
 
-gsp_vars <- c("ph_saturated_paste", "electrical_conductivity_satx", "exchangeable_sodium", "sodium_absorption_ratio", "total_estimated_salts_satx")
+gsp_vars <- c("ph_ptf", "ec_ptf", "sar", "esp", "tss")
 
 s_mps_l <- lapply(gsp_vars, function(x) {
   
@@ -301,13 +306,40 @@ s_mps_l <- lapply(gsp_vars, function(x) {
 names(s_mps_l) <- gsp_vars
 
 
+# weighted average
+s_wa <- aqp::segment(horizons(spc), intervals = c(0, 30, 100, 150), hzdepcols = c("hzn_top", "hzn_bot")) %>%
+  mutate(hzn_bot = ifelse(is.na(hzn_bot), hzn_top + 1, hzn_bot),
+         hzn_mid = hzn_bot - hzn_top,
+         pedon_key = as.character(pedon_key)
+         ) %>%
+  # values come back NA if weights (w) are missing
+  group_by(pedon_key, segment_id) %>%
+  summarize(ec_wa = weighted.mean(ec_ptf, w = hzn_mid, na.rm = TRUE),
+            ph_wa = log10(weighted.mean(1/10^-ph_ptf, w = hzn_mid, na.rm = TRUE)),
+            sar_wa = weighted.mean(sar, w = hzn_mid, na.rm = TRUE),
+            tss_wa = weighted.mean(tss, w = hzn_mid, na.rm = TRUE)
+            ) %>%
+  ungroup() %>%
+  right_join(select(aqp::site(spc), pedon_key), by = "pedon_key") %>% 
+  # reshape() doesn't work with tibbles
+  as.data.frame()
+s_wa_w <- reshape(data = s_wa, direction = "wide", 
+                   idvar = "pedon_key", 
+                   v.names = c("ph_wa", "ec_wa", "sar_wa", "tss_wa"), 
+                   timevar = "segment_id"
+                   )
+attributes(s_wa_w)$reshapeWide <- NULL
+s_wa_w <- s_wa_w[!grepl(".NA$", names(s_wa_w))]
+
+
 # merge mpspline results
 s <- site(spc)
-s_mps <- merge(s,     s_mps_l$ph_saturated_paste, by = "pedon_key", all.x = TRUE, sort = FALSE)
-s_mps <- merge(s_mps, s_mps_l$electrical_conductivity_satx, by = "pedon_key", all.x = TRUE, sort = FALSE)
-s_mps <- merge(s_mps, s_mps_l$exchangeable_sodium, by = "pedon_key", all.x = TRUE, sort = FALSE)
-s_mps <- merge(s_mps, s_mps_l$sodium_absorption_ratio, by = "pedon_key", all.x = TRUE, sort = FALSE)
-s_mps <- merge(s_mps, s_mps_l$total_estimated_salts_satx, by = "pedon_key", all.x = TRUE, sort = FALSE)
+s_mps <- merge(s,     s_mps_l$ph_ptf, by = "pedon_key", all.x = TRUE, sort = FALSE)
+s_mps <- merge(s_mps, s_mps_l$ec_ptf, by = "pedon_key", all.x = TRUE, sort = FALSE)
+s_mps <- merge(s_mps, s_mps_l$esp, by = "pedon_key", all.x = TRUE, sort = FALSE)
+s_mps <- merge(s_mps, s_mps_l$sar, by = "pedon_key", all.x = TRUE, sort = FALSE)
+s_mps <- merge(s_mps, s_mps_l$tss, by = "pedon_key", all.x = TRUE, sort = FALSE)
+s_mps <- merge(s_mps, s_wa_w, by = "pedon_key", all.x = TRUE, sort = FALSE)
 
 
 # sf object
@@ -318,8 +350,10 @@ s_mps_sf <- st_as_sf(s_mps_sf,
                  crs = 4326
                  )
 
-# save(ldm, spc, clhs_pkey, ph_lm, ec_glm, s_mps_l, s_mps_sf, file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
-load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
+write_sf(s_mps_sf, dsn = "s_mps_sf.shp", layer = "ldm")
+
+# save(ldm, spc, clhs_pkey, ph_lm, ec_glm, s_mps_l, s_wa_w, s_mps_sf, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
 
 
 ```

@@ -1,0 +1,233 @@
+---
+title: "GSP-CONUS"
+author: "Stephen Roecker"
+date: "8/4/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# Extract geodata
+
+```{r}
+
+library(raster)
+
+# ISRIC CONUS
+path <- "D:/geodata/project_data/gsp-sas/1km covariates/ISRIC/CONUS"
+lf <- list.files(path)
+lf <- lf[grepl(".tif$", lf)]
+isric_rs <- stack(file.path(path, lf))
+names(isric_rs) <- gsub("_CONUS.tif|.tif", "", lf)
+isric_vars <- names(isric_rs)
+
+
+# Other CONUS
+path <- "D:/geodata/project_data/gsp-sas/1km covariates/Other"
+lf <- list.files(path)
+lf <- lf[grepl(".tif$", lf)]
+# find matching extents
+other_extent <- sapply(file.path(path, lf), function(x) paste(extent(raster(x))))
+idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
+idx <- which(other_extent == idx)
+lf  <- lf[idx]
+
+other_rs <- stack(file.path(path, lf))
+names(other_rs) <- gsub(".tif", "", lf)
+other_vars <- names(other_rs)
+
+
+# SSURGO CONUS
+path <- "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO"
+lf <- list.files(path)
+lf <- lf[grepl(".tif$", lf)]
+# find matching extents
+other_extent <- sapply(file.path(path, lf), function(x) paste(extent(raster(x))))
+idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
+idx <- which(other_extent == idx)
+lf  <- lf[idx]
+
+ssurgo_rs <- stack(file.path(path, lf))
+names(ssurgo_rs) <- gsub(".tif", "", lf)
+ssurgo_vars <- names(ssurgo_rs)
+
+
+
+# Extract geodata
+library(sf)
+
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
+
+rs   <- stack(isric_rs, other_rs, ssurgo_rs)
+data <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
+data <- within(data, {
+  gnatsgo_pmkind[is.na(gnatsgo_pmkind)] = "missing"
+  gnatsgo_pmkind     = as.factor(gnatsgo_pmkind)
+  mlra_rs[is.na(mlra_rs)] = "missing"
+  mlra_rs            = as.factor(mlra_rs)
+  })
+
+# save(data, isric_vars, other_vars, ssurgo_vars, clhs_pkey, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+
+```
+
+
+
+# Data Splitting
+
+```{r}
+
+load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+
+# split dataset into training and testing
+vars <- names(data)[grepl("ph_ptf.|ec_ptf.|esp.", names(data))]
+vars <- vars[grepl("030", vars)]
+n    <- round(nrow(data) * 0.75)
+clhs_idx  <- clhs::clhs(data[vars], size = n)
+clhs_pkey <- data[clhs_idx, "pedon_key"]
+
+train <- subset(data, pedon_key %in% clhs_pkey)
+test  <- subset(data, ! pedon_key %in% clhs_pkey)
+
+# save(data, train, test, clhs_pkey, isric_vars, other_vars, ssurgo_vars, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+
+```
+
+
+
+# Feature Selection
+
+```{r}
+
+load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+
+# high correlations
+library(caret)
+
+vars <- c(isric_vars, other_vars)
+data2 <- data[vars]
+idx <- sapply(data2, is.numeric)
+
+vars_0 <- nearZeroVar(data2[idx], names = TRUE)
+
+vars_cor <- findCorrelation(na.exclude(data2), names = TRUE)
+
+
+# subset
+sp_vars <- names(data)[grepl("ph_ptf.|ec_ptf.|esp.", names(data))]
+vars <- c(isric_vars, other_vars)
+
+
+# Boruta
+fs_b <- lapply(sp_vars, function(x) {
+  cat(x, as.character(Sys.time()), "\n")
+  train2 <- data[c(x, 
+                   c("gnatsgo_pmkind", "mlra_rs"),
+                   isric_vars, 
+                   other_vars 
+                   )]
+  train2 <- na.exclude(train2)
+  names(train2) <- gsub("\\.", "_", names(train2))
+  test <- Boruta::Boruta(x = train2[-1], y = train2[[1]], maxRuns = 35, doTrace = 1)
+})
+names(fs_b) <- sp_vars
+# save(fs_b, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/fs_boruta.RData")
+load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/fs_boruta.RData")
+
+
+
+
+# recursive feature elimination
+set.seed(111)
+library(caret)
+rfFuncs$fit <- function(x, y, first, last, ...) {
+  train(x, y, 
+               method = "ranger", quantreg = TRUE, importance = "permutation",
+               # trControl = trainControl(method = "none"), 
+               tuneGrid = expand.grid(.mtry = round(sqrt(ncol(y))), .splitrule = "variance", .min.node.size = c(5)
+)
+               )
+}
+
+ctrl.RFE <- rfeControl(functions = rfFuncs,
+                       method = "cv",
+                       number = 5, 
+                       verbose = TRUE)
+
+train3 <- na.exclude(train2)
+x = train3[, -1]
+y = train3[,  1]
+rf.RFE <- rfe(x = x,
+              y = y,
+              sizes = 5:20,
+              rfeControl = ctrl.RFE
+              )
+
+
+# http://www.itgo.me/a/2164573104609813273/r-carets-rfe-error-in-task-1-failed-rfe-is-expecting-184-importance-val
+ 
+# save(data, train, test, test30, clhs_pkey, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+
+```
+
+
+
+# Model Training
+
+```{r}
+
+library(caret)
+
+load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+
+# no CV
+
+vars <- c("ec_ptf.000_030_cm",
+          isric_vars[! grepl("MSD3|MOD3|MOD4|MOD5|P[0-9][0-9]CHE3|VW[1-6]MOD1|...L00|...L14|^L00_|^L14_", isric_vars)], 
+          other_vars[! grepl("Landsat_B", other_vars)], 
+          ssurgo_vars[ssurgo_vars %in% c("gnatsgo_pmkind", "mlra_rs")]
+          )
+train2 <- train[vars]
+
+ec_rt2 <- train(ec_ptf.000_030_cm ~ ., data = train2, 
+                method = "ranger", quantreg = TRUE, na.action = na.exclude,
+                respect.unordered.factors = NULL,
+                importance = "permutation", 
+               # trControl = trainControl(method = "cv", number = 10, repeats = 5, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE), 
+                trControl = trainControl(method = "none"), 
+                tuneGrid = expand.grid(.mtry = round(ncol(train2[-1]) / 3), .splitrule = "variance", .min.node.size = c(5))
+)
+plot(varImp(ec_rt2))
+test = ec_rt2$finalModel$variable.importance
+test = data.frame(names(test), test)
+row.names(test) <- NULL
+View(test)
+
+
+# CV
+ec_rf <- train(ec_000_030_cm ~ ., data = train2, 
+               method = "ranger", quantreg = TRUE,
+               na.action = na.exclude,
+               trControl = trainControl(method = "cv", number = 0, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
+               )
+
+```
+
+
+
+# SSURGO accuracy
+
+```{r}
+
+# SSURGO vs KSSL at 1000-meters
+caret::R2(data$ph_000030, data$ph_saturated_paste.000_030_cm, na.rm = TRUE)
+caret::R2(data$ec_000_030_cm, data$gnatsgo_ec_000030, na.rm = TRUE)
+
+```
+
