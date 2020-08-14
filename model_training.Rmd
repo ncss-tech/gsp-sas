@@ -20,16 +20,16 @@ knitr::opts_chunk$set(echo = TRUE)
 library(raster)
 
 # ISRIC CONUS
-path <- "D:/geodata/project_data/gsp-sas/1km covariates/ISRIC/CONUS"
+path <- "K:/GSP/modeling/covariates/isric/conus"
 lf <- list.files(path)
 lf <- lf[grepl(".tif$", lf)]
 isric_rs <- stack(file.path(path, lf))
 names(isric_rs) <- gsub("_CONUS.tif|.tif", "", lf)
 isric_vars <- names(isric_rs)
-
+names(isric_rs)
 
 # Other CONUS
-path <- "D:/geodata/project_data/gsp-sas/1km covariates/Other"
+path <- "K:/GSP/modeling/covariates/other"
 lf <- list.files(path)
 lf <- lf[grepl(".tif$", lf)]
 # find matching extents
@@ -38,13 +38,14 @@ idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
 idx <- which(other_extent == idx)
 lf  <- lf[idx]
 
+
 other_rs <- stack(file.path(path, lf))
 names(other_rs) <- gsub(".tif", "", lf)
 other_vars <- names(other_rs)
-
+names(other_rs)
 
 # SSURGO CONUS
-path <- "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO"
+path <- "K:/GSP/modeling/covariates/ssurgo"
 lf <- list.files(path)
 lf <- lf[grepl(".tif$", lf)]
 # find matching extents
@@ -56,24 +57,26 @@ lf  <- lf[idx]
 ssurgo_rs <- stack(file.path(path, lf))
 names(ssurgo_rs) <- gsub(".tif", "", lf)
 ssurgo_vars <- names(ssurgo_rs)
-
+names(ssurgo_rs)
 
 
 # Extract geodata
 library(sf)
 
-load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
+load(file = "K:/GSP/modeling/LDM-compact_20200709.RData")
 
 rs   <- stack(isric_rs, other_rs, ssurgo_rs)
 data <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 data <- within(data, {
-  gnatsgo_pmkind[is.na(gnatsgo_pmkind)] = "missing"
-  gnatsgo_pmkind     = as.factor(gnatsgo_pmkind)
+  #gnatsgo_pmkind[is.na(gnatsgo_pmkind)] = "missing"
+  #gnatsgo_pmkind     = as.factor(gnatsgo_pmkind)
   mlra_rs[is.na(mlra_rs)] = "missing"
   mlra_rs            = as.factor(mlra_rs)
+  us_evc_mj[is.na(us_evc_mj)] = "missing"
+  us_evc_mj          = as.factor(us_evc_mj)
   })
 
-# save(data, isric_vars, other_vars, ssurgo_vars, clhs_pkey, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+save(data, isric_vars, other_vars, ssurgo_vars, file = "K:/GSP/modeling/predict/training_data1.RData")
 
 ```
 
@@ -83,19 +86,20 @@ data <- within(data, {
 
 ```{r}
 
-load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+load(file = "K:/GSP/modeling/predict/training_data1.RData")
 
 # split dataset into training and testing
 vars <- names(data)[grepl("ph_ptf.|ec_ptf.|esp.", names(data))]
 vars <- vars[grepl("030", vars)]
 n    <- round(nrow(data) * 0.75)
+set.seed(111)
 clhs_idx  <- clhs::clhs(data[vars], size = n)
 clhs_pkey <- data[clhs_idx, "pedon_key"]
 
 train <- subset(data, pedon_key %in% clhs_pkey)
 test  <- subset(data, ! pedon_key %in% clhs_pkey)
 
-# save(data, train, test, clhs_pkey, isric_vars, other_vars, ssurgo_vars, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+save(data, train, test, clhs_pkey, isric_vars, other_vars, ssurgo_vars, file = "K:/GSP/modeling/predict/training_data.RData")
 
 ```
 
@@ -105,7 +109,7 @@ test  <- subset(data, ! pedon_key %in% clhs_pkey)
 
 ```{r}
 
-load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+load(file = "K:/GSP/modeling/predict/training_data.RData")
 
 # high correlations
 library(caret)
@@ -116,7 +120,7 @@ idx <- sapply(data2, is.numeric)
 
 vars_0 <- nearZeroVar(data2[idx], names = TRUE)
 
-vars_cor <- findCorrelation(na.exclude(data2), names = TRUE)
+#vars_cor <- findCorrelation(na.exclude(data2), names = TRUE) #this didn't help
 
 
 # subset
@@ -128,13 +132,13 @@ vars <- c(isric_vars, other_vars)
 fs_b <- lapply(sp_vars, function(x) {
   cat(x, as.character(Sys.time()), "\n")
   train2 <- data[c(x, 
-                   c("gnatsgo_pmkind", "mlra_rs"),
+                   c(ssurgo_vars),
                    isric_vars, 
                    other_vars 
                    )]
   train2 <- na.exclude(train2)
   names(train2) <- gsub("\\.", "_", names(train2))
-  test <- Boruta::Boruta(x = train2[-1], y = train2[[1]], maxRuns = 35, doTrace = 1)
+  test <- Boruta::Boruta(x = train2[-1], y = log(train2[[1]]+0.1), maxRuns = 35, doTrace = 1)
 })
 names(fs_b) <- sp_vars
 # save(fs_b, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/fs_boruta.RData")
@@ -211,10 +215,10 @@ View(test)
 
 
 # CV
-ec_rf <- train(ec_000_030_cm ~ ., data = train2, 
+ec_rf <- train(log(ec_000_030_cm +0.1) ~ ., data = train2, 
                method = "ranger", quantreg = TRUE,
                na.action = na.exclude,
-               trControl = trainControl(method = "cv", number = 0, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
+               trControl = trainControl(method = "cv", number = 10, repeats = 3, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
                )
 
 ```
