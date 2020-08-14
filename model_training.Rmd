@@ -139,9 +139,9 @@ fs_b <- lapply(sp_vars[idx], function(x) {
   names(train2) <- gsub("\\.", "_", names(train2))
   
   # tranform y if ec or esp
-  y <- ifelse(!grepl("^ph_", x), log(train2[[1]] +0.1), train2[[1]])
+  y <- if (!grepl("^ph_", x)) log(train2[[1]] +0.1) else train2[[1]]
   
-  test <- Boruta::Boruta(x = train2[-1], y = y, maxRuns = 35, doTrace = 1)
+  test <- Boruta::Boruta(x = train2[-1], y = log(train2[[1]] + 0.1), maxRuns = 35, doTrace = 1)
 })
 names(fs_b) <- sp_vars[idx]
 # save(fs_b, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/fs_boruta.RData")
