@@ -122,7 +122,7 @@ sinstack <- stack(ndvi, ndsi, si1, si2, si3, si4, si5, si6, savi, vssi, sr, crsi
 ###Prepare all covariates###
 
 #read in ISRIC CONUS raster layers and create stack
-setwd("K:/GSP/1km_ covariates/CONUS")
+setwd("K:/GSP/1km_covariates/CONUS")
 
 # read in raster layers from external layers and create list
 covlist <- list.files(pattern=".tif$")
@@ -183,8 +183,18 @@ extent(raster("./out/us_140evc__majority.tif"))
 fstack <- stack(outfiles)
 extent(fstack)
 
+#fix valley depth layer
+setwd("K:/GSP/1km_covariates/CONUS/fix")
+vd <- raster("gsp_valleydepth_rs.tif")
+extent(vd)
+vdf <- setExtent(vd, rs, keepres = T, snap = F)
+extent(vdf)
+writeRaster(vdf, "K:/GSP/1km_covariates/CONUS/fix/out/gsp_valleydepth_rs_fix.tif", datatype = "INT2S", overwrite = T)
+test <- stack(vdf, rs)
+extent(test)
+
 #fix mlra layer
-mlra <- raster("K:/GSP/1km_ covariates/other/mlra_conus_rs_near.tif")
+mlra <- raster("K:/GSP/1km_covariates/other/mlra_conus_rs_near.tif")
 extent(mlra)
 mlraf <- setExtent(mlra, rs, keepres = T, snap = F)
 extent(mlraf)
