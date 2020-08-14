@@ -178,6 +178,20 @@ lapply(names(ol_pca$map), function(x) {
   )
 })
 
+# nlcd
+nlcd <- "D:/geodata/land_use_land_cover/NLCD_2016_Land_Cover_L48_20190424.img"
+r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/mlra_rs.tif")
+gdalUtils::gdalwarp(
+  srcfile = nlcd,
+  dstfile = "D:/geodata/project_data/gsp-sas/1km covariates/Other/nlcd_2016_conus.tif",
+  t_srs = proj4string(r), 
+  te = bbox(r),
+  r = "mode",
+  tr = res(r),
+  ot = "Int32",
+  verbose   = TRUE,
+  overwrite = TRUE
+)
 
 
 ###read in layers and create predictors data frame

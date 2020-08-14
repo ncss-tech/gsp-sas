@@ -33,10 +33,10 @@ path <- "D:/geodata/project_data/gsp-sas/1km covariates/Other"
 lf <- list.files(path)
 lf <- lf[grepl(".tif$", lf)]
 # find matching extents
-other_extent <- sapply(file.path(path, lf), function(x) paste(extent(raster(x))))
-idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
-idx <- which(other_extent == idx)
-lf  <- lf[idx]
+# other_extent <- sapply(file.path(path, lf), function(x) paste(extent(raster(x))))
+# idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
+# idx <- which(other_extent == idx)
+# lf  <- lf[idx]
 
 other_rs <- stack(file.path(path, lf))
 names(other_rs) <- gsub(".tif", "", lf)
@@ -47,11 +47,11 @@ other_vars <- names(other_rs)
 path <- "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO"
 lf <- list.files(path)
 lf <- lf[grepl(".tif$", lf)]
-# find matching extents
-other_extent <- sapply(file.path(path, lf), function(x) paste(extent(raster(x))))
-idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
-idx <- which(other_extent == idx)
-lf  <- lf[idx]
+# # find matching extents
+# other_extent <- sapply(file.path(path, lf), function(x) paste(extent(raster(x))))
+# idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
+# idx <- which(other_extent == idx)
+# lf  <- lf[idx]
 
 ssurgo_rs <- stack(file.path(path, lf))
 names(ssurgo_rs) <- gsub(".tif", "", lf)
@@ -67,13 +67,11 @@ load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compac
 rs   <- stack(isric_rs, other_rs, ssurgo_rs)
 data <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 data <- within(data, {
-  gnatsgo_pmkind[is.na(gnatsgo_pmkind)] = "missing"
-  gnatsgo_pmkind     = as.factor(gnatsgo_pmkind)
-  mlra_rs[is.na(mlra_rs)] = "missing"
-  mlra_rs            = as.factor(mlra_rs)
+  ssurgo_pm_lu3_rs_mode[is.na(ssurgo_pm_lu3_rs_mode)] = "missing"
+  ssurgo_pm_lu3_rs_mode = as.factor(ssurgo_pm_lu3_rs_mode)
+  mlra_rs               = as.factor(mlra_rs)
+  nlcd_2016_conus       = as.factor(nlcd_2016_conus)
   })
-
-# save(data, isric_vars, other_vars, ssurgo_vars, clhs_pkey, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
 
 ```
 
@@ -89,6 +87,7 @@ load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_d
 vars <- names(data)[grepl("ph_ptf.|ec_ptf.|esp.", names(data))]
 vars <- vars[grepl("030", vars)]
 n    <- round(nrow(data) * 0.75)
+set.seed(111)
 clhs_idx  <- clhs::clhs(data[vars], size = n)
 clhs_pkey <- data[clhs_idx, "pedon_key"]
 
@@ -119,24 +118,32 @@ vars_0 <- nearZeroVar(data2[idx], names = TRUE)
 vars_cor <- findCorrelation(na.exclude(data2), names = TRUE)
 
 
-# subset
-sp_vars <- names(data)[grepl("ph_ptf.|ec_ptf.|esp.", names(data))]
-vars <- c(isric_vars, other_vars)
-
-
 # Boruta
-fs_b <- lapply(sp_vars, function(x) {
+sp_vars <- names(data)[grepl("ph_ptf.|ec_ptf.|esp.", names(data)) & grepl("030", names(data))]
+vars <- c(isric_vars, other_vars, ssurgo_vars)
+
+set.seed(111)
+
+# pick your variables with idx
+idx <- 3:4
+fs_b <- lapply(sp_vars[idx], function(x) {
   cat(x, as.character(Sys.time()), "\n")
-  train2 <- data[c(x, 
-                   c("gnatsgo_pmkind", "mlra_rs"),
-                   isric_vars, 
-                   other_vars 
-                   )]
+  
+  # remove matching ssurgo variable
+  x2     <- strsplit(x, split = "_|\\.")[[1]][1]
+  svars2 <- ssurgo_vars[grepl(x2, ssurgo_vars)]
+  vars2  <- vars[!vars %in% svars2]
+  
+  train2 <- data[c(x, vars2)]
   train2 <- na.exclude(train2)
   names(train2) <- gsub("\\.", "_", names(train2))
-  test <- Boruta::Boruta(x = train2[-1], y = train2[[1]], maxRuns = 35, doTrace = 1)
+  
+  # tranform y if ec or esp
+  y <- ifelse(!grepl("^ph_", x), log(train2[[1]] +0.1), train2[[1]])
+  
+  test <- Boruta::Boruta(x = train2[-1], y = y, maxRuns = 35, doTrace = 1)
 })
-names(fs_b) <- sp_vars
+names(fs_b) <- sp_vars[idx]
 # save(fs_b, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/fs_boruta.RData")
 load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/fs_boruta.RData")
 
@@ -191,11 +198,11 @@ load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_d
 vars <- c("ec_ptf.000_030_cm",
           isric_vars[! grepl("MSD3|MOD3|MOD4|MOD5|P[0-9][0-9]CHE3|VW[1-6]MOD1|...L00|...L14|^L00_|^L14_", isric_vars)], 
           other_vars[! grepl("Landsat_B", other_vars)], 
-          ssurgo_vars[ssurgo_vars %in% c("gnatsgo_pmkind", "mlra_rs")]
+          ssurgo_vars[ssurgo_vars %in% c("gnatsgo_pmkind", "mlra_rs", "ph30_rs_average", "sar30_rs_average")]
           )
 train2 <- train[vars]
 
-ec_rt2 <- train(ec_ptf.000_030_cm ~ ., data = train2, 
+ec_rt2 <- train((ec_ptf.000_030_cm + 0.1)^-0.49 ~ ., data = train2, 
                 method = "ranger", quantreg = TRUE, na.action = na.exclude,
                 respect.unordered.factors = NULL,
                 importance = "permutation", 
@@ -208,6 +215,14 @@ test = ec_rt2$finalModel$variable.importance
 test = data.frame(names(test), test)
 row.names(test) <- NULL
 View(test)
+
+y = log(na.exclude(train2)$ec_ptf.000_030_cm + 0.1)
+test_ex <- explain(ec_rt2$finalModel, data = na.exclude(train2)[-1], y = y)
+test_p  <- model_performance(test_ex)
+test_md <- model_diagnostics(test_ex)
+plot(test_md, variable = "y", yvariable = "y_hat") + geom_abline(intercept = 0, slope = 1)
+plot(test_md, variable = "y", yvariable = "residuals")
+
 
 
 # CV
