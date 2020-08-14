@@ -33,10 +33,10 @@ path <- "K:/GSP/modeling/covariates/other"
 lf <- list.files(path)
 lf <- lf[grepl(".tif$", lf)]
 # find matching extents
-other_extent <- sapply(file.path(path, lf), function(x) paste(extent(raster(x))))
-idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
-idx <- which(other_extent == idx)
-lf  <- lf[idx]
+#other_extent <- sapply(file.path(path, lf), function(x) paste(extent(raster(x))))
+#idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
+#idx <- which(other_extent == idx)
+#lf  <- lf[idx]
 
 
 other_rs <- stack(file.path(path, lf))
@@ -49,10 +49,10 @@ path <- "K:/GSP/modeling/covariates/ssurgo"
 lf <- list.files(path)
 lf <- lf[grepl(".tif$", lf)]
 # find matching extents
-other_extent <- sapply(file.path(path, lf), function(x) paste(extent(raster(x))))
-idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
-idx <- which(other_extent == idx)
-lf  <- lf[idx]
+#other_extent <- sapply(file.path(path, lf), function(x) paste(extent(raster(x))))
+#idx <- names(sort(table(other_extent), decreasing = TRUE)[1])
+#idx <- which(other_extent == idx)
+#lf  <- lf[idx]
 
 ssurgo_rs <- stack(file.path(path, lf))
 names(ssurgo_rs) <- gsub(".tif", "", lf)
@@ -68,15 +68,15 @@ load(file = "K:/GSP/modeling/LDM-compact_20200709.RData")
 rs   <- stack(isric_rs, other_rs, ssurgo_rs)
 data <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 data <- within(data, {
-  #gnatsgo_pmkind[is.na(gnatsgo_pmkind)] = "missing"
-  #gnatsgo_pmkind     = as.factor(gnatsgo_pmkind)
+  ssurgo_pm_lu3_rs_mode[is.na(ssurgo_pm_lu3_rs_mode)] = "missing"
+  ssurgo_pm_lu3_rs_mode     = as.factor(ssurgo_pm_lu3_rs_mode)
   mlra_rs[is.na(mlra_rs)] = "missing"
   mlra_rs            = as.factor(mlra_rs)
-  us_evc_mj[is.na(us_evc_mj)] = "missing"
-  us_evc_mj          = as.factor(us_evc_mj)
+  nlcd_2016_conus[is.na(nlcd_2016_conus)] = "missing"
+  nlcd_2016_conus          = as.factor(nlcd_2016_conus)
   })
 
-save(data, isric_vars, other_vars, ssurgo_vars, file = "K:/GSP/modeling/predict/training_data1.RData")
+save(data, isric_vars, other_vars, ssurgo_vars, file = "K:/GSP/modeling/predict/training_data1.RData", overwrite = T)
 
 ```
 
@@ -99,7 +99,7 @@ clhs_pkey <- data[clhs_idx, "pedon_key"]
 train <- subset(data, pedon_key %in% clhs_pkey)
 test  <- subset(data, ! pedon_key %in% clhs_pkey)
 
-save(data, train, test, clhs_pkey, isric_vars, other_vars, ssurgo_vars, file = "K:/GSP/modeling/predict/training_data.RData")
+save(data, train, test, clhs_pkey, isric_vars, other_vars, ssurgo_vars, file = "K:/GSP/modeling/predict/training_data.RData", overwrite = T)
 
 ```
 
@@ -111,21 +111,20 @@ save(data, train, test, clhs_pkey, isric_vars, other_vars, ssurgo_vars, file = "
 
 load(file = "K:/GSP/modeling/predict/training_data.RData")
 
-# high correlations
-library(caret)
+# high correlations; this analysis wasn't particularly useful
+#library(caret)
 
-vars <- c(isric_vars, other_vars)
-data2 <- data[vars]
-idx <- sapply(data2, is.numeric)
+#vars <- c(isric_vars, other_vars)
+#data2 <- data[vars]
+#idx <- sapply(data2, is.numeric)
 
-vars_0 <- nearZeroVar(data2[idx], names = TRUE)
+#vars_0 <- nearZeroVar(data2[idx], names = TRUE)
 
-#vars_cor <- findCorrelation(na.exclude(data2), names = TRUE) #this didn't help
+#vars_cor <- findCorrelation(na.exclude(data2), names = TRUE) 
 
 
 # subset
-sp_vars <- names(data)[grepl("ph_ptf.|ec_ptf.|esp.", names(data))]
-vars <- c(isric_vars, other_vars)
+sp_vars <- names(data)[grepl("ec_ptf.0|esp.0", names(data))]
 
 
 # Boruta
@@ -141,37 +140,37 @@ fs_b <- lapply(sp_vars, function(x) {
   test <- Boruta::Boruta(x = train2[-1], y = log(train2[[1]]+0.1), maxRuns = 35, doTrace = 1)
 })
 names(fs_b) <- sp_vars
-# save(fs_b, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/fs_boruta.RData")
-load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/fs_boruta.RData")
+
+save(fs_b, file = "K:/GSP/modeling/predict/fs_boruta.RData", overwrite = T)
+load(file = "K:/GSP/modeling/predict/fs_boruta.RData")
 
 
 
 
 # recursive feature elimination
-set.seed(111)
-library(caret)
-rfFuncs$fit <- function(x, y, first, last, ...) {
-  train(x, y, 
-               method = "ranger", quantreg = TRUE, importance = "permutation",
+#set.seed(111)
+#library(caret)
+#rfFuncs$fit <- function(x, y, first, last, ...) {
+#  train(x, y, method = "ranger", quantreg = TRUE, importance = "permutation",
                # trControl = trainControl(method = "none"), 
-               tuneGrid = expand.grid(.mtry = round(sqrt(ncol(y))), .splitrule = "variance", .min.node.size = c(5)
-)
-               )
-}
+#               tuneGrid = expand.grid(.mtry = round(sqrt(ncol(y))), .splitrule = "variance", .min.node.size = c(5)
+#)
+#               )
+#}
 
-ctrl.RFE <- rfeControl(functions = rfFuncs,
-                       method = "cv",
-                       number = 5, 
-                       verbose = TRUE)
+#ctrl.RFE <- rfeControl(functions = rfFuncs,
+#                      method = "cv",
+#                      number = 5, 
+#                      verbose = TRUE)
 
-train3 <- na.exclude(train2)
-x = train3[, -1]
-y = train3[,  1]
-rf.RFE <- rfe(x = x,
-              y = y,
-              sizes = 5:20,
-              rfeControl = ctrl.RFE
-              )
+#train3 <- na.exclude(train2)
+#x = train3[, -1]
+#y = train3[,  1]
+#rf.RFE <- rfe(x = x,
+#              y = y,
+#              sizes = 5:20,
+#              rfeControl = ctrl.RFE
+#              )
 
 
 # http://www.itgo.me/a/2164573104609813273/r-carets-rfe-error-in-task-1-failed-rfe-is-expecting-184-importance-val
