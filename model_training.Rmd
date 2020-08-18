@@ -109,13 +109,14 @@ load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_d
 # high correlations
 library(caret)
 
-vars <- c(isric_vars, other_vars)
-data2 <- data[vars]
-idx <- sapply(data2, is.numeric)
+vars <- c(isric_vars, other_vars, ssurgo_vars)
+idx <- sapply(data, is.numeric) & names(data) %in% vars
+data2 <- na.exclude(data[idx])
 
-vars_0 <- nearZeroVar(data2[idx], names = TRUE)
+vars_0 <- nearZeroVar(data2, names = TRUE)
 
-vars_cor <- findCorrelation(na.exclude(data2), names = TRUE)
+data3 <- data2[!names(data2) %in% vars_0]
+vars_cor <- findCorrelation(x = cor(data3, use = "complete.obs"), names = TRUE, cutoff = 0.75)
 
 
 # Boruta
@@ -187,58 +188,47 @@ rf.RFE <- rfe(x = x,
 
 # Model Training
 
-```{r}
+```{r, single-rf}
 
+library(ranger)
 library(caret)
 
 load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
 
 # no CV
-
-vars <- c("ec_ptf.000_030_cm",
+vars <- c("ph_ptf.000_030_cm",
           isric_vars, 
-          ssurgo_vars[ssurgo_vars %in% c("gnatsgo_pmkind", "mlra_rs", "ph30_rs_average", "sar30_rs_average")]
+          other_vars,
+          # remove matching ssurgo derivative
+          ssurgo_vars[!grepl("ssurgo_ptph", ssurgo_vars)]
           )
-train2 <- train[vars]
+train2 <- na.exclude(train[vars])
 
-idx <- sapply(train2, is.numeric)
-idx <- which(sapply(train2[idx], function(x) all(x + 0.1 > 0, na.rm = TRUE) & median(x, na.rm = TRUE) > 0))
-train3 <- na.exclude(train2)
-train3[idx][1] <- lapply(train3[idx][1], function(x) {
-  t <- car::powerTransform(x + 0.1)
-  y <- x ^ t$lambda
-})
 
-set.seed(111)
-ec_rt3 <- train(y = log(train5[[1]] + 0.1), x = train5[-1], 
-                method = "ranger", quantreg = TRUE, # na.action = na.exclude,
+# log transform y if necessary (e.g. log(y + 0.1))
+ph_rf <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[-1], 
+                quantreg = TRUE,
                 respect.unordered.factors = NULL,
-                importance = "permutation", 
-               # trControl = trainControl(method = "cv", number = 10, repeats = 5, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE), 
-                trControl = trainControl(method = "none"), 
-                tuneGrid = expand.grid(.mtry = 20/ 3, # round(ncol(train2[-1]) / 3), 
-                                       .splitrule = "variance", .min.node.size = c(5))
-)
-plot(varImp(ec_rt2))
-test = ec_rt2$finalModel$variable.importance
-test = data.frame(names(test), test)
-row.names(test) <- NULL
-test <- test[order(- test$test), ]
-test <- within(test, {
-  names.test. = ifelse(grepl("mlra", names.test.), "mlra_rs", names.test.)
-  ssurgo_pm_lu3_rs_mode = ifelse(grepl("ssurgo_pm", names.test.), "ssurgo_pm_lu3_rs_mode", names.test.)
-  nlcd_2016_conus = ifelse(grepl("nlcd", names.test.), "nlcd_2016_conus", names.test.)
-})
-test = test[!duplicated(test$names.test.), ]
-train5 <- cbind(train2[1], train2[names(train2) %in% test$names.test.[1:20]])
-train5 <- na.exclude(train5)
+                importance = "permutation",
+                seed = 111 
+                )
+print(ph_rf)
 
-y = log(na.exclude(train2)$ec_ptf.000_030_cm + 0.1)
-test_ex <- explain(ec_rt2$finalModel, data = na.exclude(train2)[-1], y = y)
-test_p  <- model_performance(test_ex)
-test_md <- model_diagnostics(test_ex)
-plot(test_md, variable = "y", yvariable = "y_hat") + geom_abline(intercept = 0, slope = 1)
-plot(test_md, variable = "y", yvariable = "residuals")
+
+# variable importance plots
+library(vip)
+
+vip(ph_rf, 20)
+
+
+# residual plots
+library(DALEX)
+
+ph_rf_e <- explain(ph_rf, data = train2[-1], y = train2$ph_ptf.000_030_cm)
+ph_rf_p <- model_performance(ph_rf_e)
+ph_rf_d <- model_diagnostics(ph_rf_e)
+plot(ph_rf_d, variable = "y", yvariable = "y_hat") + geom_abline(intercept = 0, slope = 1)
+plot(ph_rf_d, variable = "y", yvariable = "residuals")
 
 
 
@@ -246,7 +236,7 @@ plot(test_md, variable = "y", yvariable = "residuals")
 ec_rf <- train(ec_000_030_cm ~ ., data = train2, 
                method = "ranger", quantreg = TRUE,
                na.action = na.exclude,
-               trControl = trainControl(method = "cv", number = 0, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
+               trControl = trainControl(method = "cv", number = 10, repeats = 3, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
                )
 
 ```
