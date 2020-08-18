@@ -147,8 +147,22 @@ fs_b <- lapply(sp_vars[idx], function(x) {
 names(fs_b) <- sp_vars[idx]
 # save(fs_b_ph, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/fs_boruta_ph.RData")
 load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/fs_boruta_ph.RData")
+load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/fs_boruta_ec_esp.RData")
 
+plot(fs_b_ph$ph_ptf.000_030_cm)
 
+fs_b_stats <- lapply(fs_b_ph, function(x) {
+  s <- Boruta::attStats(x)
+  s <- data.frame(variable = row.names(s), varImp = s$medianImp, decision = s$decision, stringsAsFactors = FALSE)
+  s$variable <- reorder(as.factor(s$variable), s$varImp, sum)
+  s <- s[order(- s$varImp), ]
+  row.names(s) <- 1:nrow(s)
+  return(s)
+  })
+
+library(ggplot2)
+ggplot(fs_b_stats$ph_ptf.000_030_cm, aes(x = varImp, y = variable)) +
+  geom_point()
 
 
 # recursive feature elimination
@@ -205,25 +219,55 @@ vars <- c("ph_ptf.000_030_cm",
 train2 <- na.exclude(train[vars])
 
 
+
+# Boruta confirmed variables
+idx <- which(names(train2) %in% fs_b_stats$ph_ptf.000_030_cm$variable[fs_b_stats$ph_ptf.000_030_cm$decision == "Confirmed"])
 # log transform y if necessary (e.g. log(y + 0.1))
-ph_rf <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[-1], 
-                quantreg = TRUE,
-                respect.unordered.factors = NULL,
-                importance = "permutation",
-                seed = 111 
-                )
-print(ph_rf)
+ph_rf_all <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[idx], 
+                    quantreg = TRUE,importance = "permutation",
+                    respect.unordered.factors = FALSE,
+                    seed = 111 
+                    )
+
+# top 50 variables
+idx <- which(names(train2) %in% fs_b_stats$ph_ptf.000_030_cm$variable[1:50])
+ph_rf_t50 <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[idx], 
+                    quantreg = TRUE,importance = "permutation",
+                    respect.unordered.factors = NULL,
+                    seed = 111 
+                    )
+
+# top 25 variables
+idx <- which(names(train2) %in% fs_b_stats$ph_ptf.000_030_cm$variable[1:25])
+ph_rf_t25 <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[-1], 
+                    quantreg = TRUE,importance = "permutation",
+                    respect.unordered.factors = NULL,
+                    seed = 111 
+                    )
+
+# uncorrelated variables
+idx <- names(train2) %in% fs_b_stats$ph_ptf.000_030_cm$variable[fs_b_stats$ph_ptf.000_030_cm$decision == "Confirmed"] & sapply(train2, is.numeric)
+vars_cor <- findCorrelation(x = cor(train2[idx], use = "complete.obs"), names = TRUE, cutoff = 0.75)
+vars <- c(vars_cor, ssurgo_vars[1:2], "nlcd_2016_conus")
+ph_rf_cor <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[vars_cor], 
+                    quantreg = TRUE,importance = "permutation",
+                    respect.unordered.factors = FALSE,
+                    seed = 111 
+                    )
+
+
 
 
 # variable importance plots
 library(vip)
 
-vip(ph_rf, 20)
+vip(ph_rf_all, 20)
 
 
 # residual plots
 library(DALEX)
 
+ph_rf <- ph_rf_t25
 ph_rf_e <- explain(ph_rf, data = train2[-1], y = train2$ph_ptf.000_030_cm)
 ph_rf_p <- model_performance(ph_rf_e)
 ph_rf_d <- model_diagnostics(ph_rf_e)
@@ -233,7 +277,8 @@ plot(ph_rf_d, variable = "y", yvariable = "residuals")
 
 
 # CV
-ec_rf <- train(ec_000_030_cm ~ ., data = train2, 
+idx <- which(names(train2) %in% fs_b_stats$ph_ptf.000_030_cm$variable[1:25])
+ec_rf <- train(train2[1] ~ ., data = train2[idx], 
                method = "ranger", quantreg = TRUE,
                na.action = na.exclude,
                trControl = trainControl(method = "cv", number = 10, repeats = 3, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
