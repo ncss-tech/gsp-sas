@@ -209,7 +209,7 @@ library(caret)
 
 load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
 
-# no CV
+# single forest
 vars <- c("ph_ptf.000_030_cm",
           isric_vars, 
           other_vars,
@@ -276,13 +276,28 @@ plot(ph_rf_d, variable = "y", yvariable = "residuals")
 
 
 
-# CV
+# model tuning
 idx <- which(names(train2) %in% fs_b_stats$ph_ptf.000_030_cm$variable[1:25])
-ec_rf <- train(train2[1] ~ ., data = train2[idx], 
+ph_rf_30 <- train(y = train2$ph_ptf.000_030_cm, x = train2[idx], 
                method = "ranger", quantreg = TRUE,
-               na.action = na.exclude,
-               trControl = trainControl(method = "cv", number = 10, repeats = 3, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
+               # na.action = na.exclude,
+               trControl = trainControl(method = "cv", number = 10, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
                )
+
+vars <- c("ph_ptf.030_100_cm",
+          isric_vars, 
+          other_vars,
+          # remove matching ssurgo derivative
+          ssurgo_vars[!grepl("ssurgo_ptph", ssurgo_vars)]
+          )
+train2 <- na.exclude(train[vars])
+ph_rf_100 <- train(y = train2$ph_ptf.030_100_cm, x = train2[idx], 
+               method = "ranger", quantreg = TRUE,
+               # na.action = na.exclude,
+               trControl = trainControl(method = "cv", number = 10, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
+               )
+
+# save(ph_rf_30, ph_rf_100, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
 
 ```
 
