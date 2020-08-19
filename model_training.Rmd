@@ -240,7 +240,7 @@ ph_rf_t50 <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[idx],
 # top 25 variables
 idx <- which(names(train2) %in% fs_b_stats$ph_ptf.000_030_cm$variable[1:25])
 ph_rf_t25 <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[-1], 
-                    quantreg = TRUE,importance = "permutation",
+                    quantreg = TRUE, importance = "permutation",
                     respect.unordered.factors = NULL,
                     seed = 111 
                     )
@@ -277,13 +277,23 @@ plot(ph_rf_d, variable = "y", yvariable = "residuals")
 
 
 # model tuning
+# pH 0-30 cm
+vars <- c("ph_ptf.000_030_cm",
+          isric_vars, 
+          other_vars,
+          # remove matching ssurgo derivative
+          ssurgo_vars[!grepl("ssurgo_ptph", ssurgo_vars)]
+          )
+train2 <- na.exclude(train[vars])
+
 idx <- which(names(train2) %in% fs_b_stats$ph_ptf.000_030_cm$variable[1:25])
-ph_rf_30 <- train(y = train2$ph_ptf.000_030_cm, x = train2[idx], 
+ph_rf_030 <- train(y = train2$ph_ptf.000_030_cm, x = train2[idx], 
                method = "ranger", quantreg = TRUE,
-               # na.action = na.exclude,
+               importance = "permutation",
                trControl = trainControl(method = "cv", number = 10, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
                )
 
+# pH 30-100 cm
 vars <- c("ph_ptf.030_100_cm",
           isric_vars, 
           other_vars,
@@ -291,13 +301,20 @@ vars <- c("ph_ptf.030_100_cm",
           ssurgo_vars[!grepl("ssurgo_ptph", ssurgo_vars)]
           )
 train2 <- na.exclude(train[vars])
+
+idx <- which(names(train2) %in% fs_b_stats$ph_ptf.030_100_cm$variable[1:25])
 ph_rf_100 <- train(y = train2$ph_ptf.030_100_cm, x = train2[idx], 
-               method = "ranger", quantreg = TRUE,
+               method = "ranger", quantreg = TRUE, 
+               importance = "permutation",
                # na.action = na.exclude,
                trControl = trainControl(method = "cv", number = 10, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
                )
 
-# save(ph_rf_30, ph_rf_100, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
+print(ph_rf_030)
+print(ph_rf_100)
+
+# save(ph_rf_30, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
+load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
 
 ```
 
