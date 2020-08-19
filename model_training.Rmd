@@ -112,7 +112,7 @@ save(data, train, test, clhs_pkey, isric_vars, other_vars, ssurgo_vars, file = "
 load(file = "K:/GSP/modeling/predict/training_data.RData")
 
 # high correlations; this analysis wasn't particularly useful
-#library(caret)
+library(caret)
 
 #vars <- c(isric_vars, other_vars)
 #data2 <- data[vars]
@@ -128,6 +128,7 @@ sp_vars <- names(data)[grepl("ec_ptf.0|esp.0", names(data))]
 
 
 # Boruta
+library(Boruta)
 fs_b <- lapply(sp_vars, function(x) {
   cat(x, as.character(Sys.time()), "\n")
   train2 <- data[c(x, 
@@ -141,41 +142,38 @@ fs_b <- lapply(sp_vars, function(x) {
 })
 names(fs_b) <- sp_vars
 
-save(fs_b, file = "K:/GSP/modeling/predict/fs_boruta.RData", overwrite = T)
-load(file = "K:/GSP/modeling/predict/fs_boruta.RData")
+save(fs_b, file = "K:/GSP/modeling/predict/fs_boruta_ec_esp.RData", overwrite = T)
+load(file = "K:/GSP/modeling/predict/fs_boruta_ec_esp.RData")
+
+#view objective function
+plot(fs_b$ec_ptf.000_030_cm) #approx 15 covs
+plot(fs_b$ec_ptf.030_100_cm) #approx 18 covs
+
+#create, view, export importance stats
+cov_ec0 <- attStats(fs_b$ec_ptf.000_030_cm)
+cov_ec0_c <- subset(cov_ec0, decision == "Confirmed")
+cov_ec30 <- attStats(fs_b$ec_ptf.030_100_cm)
+cov_ec30_c <- subset(cov_ec30, decision == "Confirmed")
+write.csv(cov_ec0_c, file = "K:/GSP/modeling/predict/ec_0_boruta.csv")
+write.csv(cov_ec30_c, file = "K:/GSP/modeling/predict/ec_30_boruta.csv")
+
+#stephen's method to filter stats for confirmed variables
+fs_b_stats <- lapply(fs_b, function(x) {
+  s <- Boruta::attStats(x)
+  s <- data.frame(variable = row.names(s), varImp = s$medianImp, decision = s$decision,  stringsAsFactors = FALSE)
+  s$variable <- reorder(as.factor(s$variable), s$varImp, sum)
+  s <- s[order(- s$varImp), ]
+  row.names(s) <- 1:nrow(s)
+  return(s)
+  })
+
+library(ggplot2)
+ggplot(fs_b_stats$ec_ptf.000_030_cm, aes(x = varImp, y = variable)) +
+  geom_point()
+ggplot(fs_b_stats$ec_ptf.030_100_cm, aes(x = varImp, y = variable)) +
+  geom_point()
 
 
-
-
-# recursive feature elimination
-#set.seed(111)
-#library(caret)
-#rfFuncs$fit <- function(x, y, first, last, ...) {
-#  train(x, y, method = "ranger", quantreg = TRUE, importance = "permutation",
-               # trControl = trainControl(method = "none"), 
-#               tuneGrid = expand.grid(.mtry = round(sqrt(ncol(y))), .splitrule = "variance", .min.node.size = c(5)
-#)
-#               )
-#}
-
-#ctrl.RFE <- rfeControl(functions = rfFuncs,
-#                      method = "cv",
-#                      number = 5, 
-#                      verbose = TRUE)
-
-#train3 <- na.exclude(train2)
-#x = train3[, -1]
-#y = train3[,  1]
-#rf.RFE <- rfe(x = x,
-#              y = y,
-#              sizes = 5:20,
-#              rfeControl = ctrl.RFE
-#              )
-
-
-# http://www.itgo.me/a/2164573104609813273/r-carets-rfe-error-in-task-1-failed-rfe-is-expecting-184-importance-val
- 
-# save(data, train, test, test30, clhs_pkey, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
 
 ```
 
@@ -186,37 +184,120 @@ load(file = "K:/GSP/modeling/predict/fs_boruta.RData")
 ```{r}
 
 library(caret)
+library(ranger)
 
-load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+load(file = "K:/GSP/modeling/predict/training_data.RData")
 
-# no CV
-
+##0-30cm##
+#filter training data 
 vars <- c("ec_ptf.000_030_cm",
-          isric_vars[! grepl("MSD3|MOD3|MOD4|MOD5|P[0-9][0-9]CHE3|VW[1-6]MOD1|...L00|...L14|^L00_|^L14_", isric_vars)], 
-          other_vars[! grepl("Landsat_B", other_vars)], 
-          ssurgo_vars[ssurgo_vars %in% c("gnatsgo_pmkind", "mlra_rs")]
+          isric_vars, 
+          other_vars,
+          # remove matching ssurgo derivative
+          ssurgo_vars[!grepl("ssurgo_ptec", ssurgo_vars)]
           )
-train2 <- train[vars]
+train2 <- na.exclude(train[vars])
 
-ec_rt2 <- train(ec_ptf.000_030_cm ~ ., data = train2, 
-                method = "ranger", quantreg = TRUE, na.action = na.exclude,
-                respect.unordered.factors = NULL,
-                importance = "permutation", 
-               # trControl = trainControl(method = "cv", number = 10, repeats = 5, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE), 
-                trControl = trainControl(method = "none"), 
-                tuneGrid = expand.grid(.mtry = round(ncol(train2[-1]) / 3), .splitrule = "variance", .min.node.size = c(5))
-)
-plot(varImp(ec_rt2))
-test = ec_rt2$finalModel$variable.importance
-test = data.frame(names(test), test)
-row.names(test) <- NULL
-View(test)
+#for all confirmed 
+#cov_list <- setNames(split(cov_ec0_c, seq(nrow(cov_ec0_c))), rownames(cov_ec0_c))
+#names(cov_list)
+#cov_list <- as.list(cov_list)
+#vars <- c("ec_ptf.000_030_cm", names(cov_list)[! grepl("ssurgo_pte", names(cov_list))])
+#train2 <- na.exclude(train[vars])
+
+#(1) all confirmed variables
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[fs_b_stats$ec_ptf.000_030_cm$decision == "Confirmed"])
+#test model; no cv
+ec0_rf_all <- ranger(y = log(train2$ec_ptf.000_030_cm +0.1), x = train2[idx], 
+                    quantreg = TRUE, importance = "permutation",
+                    respect.unordered.factors = FALSE,
+                    seed = 111 
+                    )
+
+r2_ec0_all <- ec0_rf_all$r.squared
+
+#(2) half of confirmed variables
+fs_b_stats$ec_ptf.000_030_cm #to look at variables in ranked order
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[3:46])
+#test model; no cv
+ec0_rf_half <- ranger(y = log(train2$ec_ptf.000_030_cm +0.1), x = train2[idx], 
+                    quantreg = TRUE, importance = "permutation",
+                    respect.unordered.factors = FALSE,
+                    seed = 111 
+                    )
+
+r2_ec0_half <- ec0_rf_half$r.squared
+
+#(3) variables based on boruta plot (17 for 0-30)
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[3:17])
+#test model; no cv
+ec0_rf_top <- ranger(y = log(train2$ec_ptf.000_030_cm +0.1), x = train2[idx], 
+                    quantreg = TRUE, importance = "permutation",
+                    respect.unordered.factors = FALSE,
+                    seed = 111 
+                    )
+
+r2_ec0_top <- ec0_rf_top$r.squared
+
+##30-100cm##
+#filter training data 
+vars <- c("ec_ptf.030_100_cm",
+          isric_vars, 
+          other_vars,
+          # remove matching ssurgo derivative
+          ssurgo_vars[!grepl("ssurgo_ptec", ssurgo_vars)]
+          )
+train2 <- na.exclude(train[vars])
+
+#(1) all confirmed variables
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[fs_b_stats$ec_ptf.030_100_cm$decision == "Confirmed"])
+#test model; no cv
+ec30_rf_all <- ranger(y = log(train2$ec_ptf.030_100_cm +0.1), x = train2[idx], 
+                    quantreg = TRUE, importance = "permutation",
+                    respect.unordered.factors = FALSE,
+                    seed = 111 
+                    )
+
+r2_ec30_all <- ec30_rf_all$r.squared
+
+#(2) half of confirmed variables
+fs_b_stats$ec_ptf.030_100_cm #to look at variables in ranked order
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[2:46])#has ec0-30
+#test model; no cv
+ec30_rf_half <- ranger(y = log(train2$ec_ptf.030_100_cm +0.1), x = train2[idx], 
+                    quantreg = TRUE, importance = "permutation",
+                    respect.unordered.factors = FALSE,
+                    seed = 111 
+                    )
+
+r2_ec30_half <- ec30_rf_half$r.squared
+
+#(3) variables based on boruta plot (19 for 30-100)
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[2:18])#has ec0-30
+#test model; no cv
+ec30_rf_top <- ranger(y = log(train2$ec_ptf.030_100_cm +0.1), x = train2[idx], 
+                    quantreg = TRUE, importance = "permutation",
+                    respect.unordered.factors = FALSE,
+                    seed = 111 
+                    )
+
+r2_ec30_top <- ec30_rf_top$r.squared
 
 
-# CV
-ec_rf <- train(log(ec_000_030_cm +0.1) ~ ., data = train2, 
+#model with cross validation
+##0-30cm##
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[3:17])
+ec0_rfcv <- train(log(ec_ptf.000_030_cm +0.1) ~ ., data = train2[idx], 
                method = "ranger", quantreg = TRUE,
-               na.action = na.exclude,
+               na.action = na.exclude, importance = "permutation",
+               trControl = trainControl(method = "cv", number = 10, repeats = 3, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
+               )
+
+##30-100cm##
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[2:18])#has ec0-30
+ec30_rfcv <- train(log(ec_ptf.030_100_cm +0.1) ~ ., data = train2, 
+               method = "ranger", quantreg = TRUE,
+               na.action = na.exclude, importance = "permutation",
                trControl = trainControl(method = "cv", number = 10, repeats = 3, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
                )
 
