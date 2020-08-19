@@ -313,8 +313,13 @@ ph_rf_100 <- train(y = train2$ph_ptf.030_100_cm, x = train2[idx],
 print(ph_rf_030)
 print(ph_rf_100)
 
-# save(ph_rf_30, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
+# save(ph_rf_030, ph_rf_100, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
 load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
+
+predfun <- function(model, ...) predict(model, ...)$predictions
+
+ph_030_r <- predict(rs, ph_rf_030$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_030.tif")
+
 
 ```
 
