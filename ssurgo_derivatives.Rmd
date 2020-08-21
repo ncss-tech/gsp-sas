@@ -155,9 +155,9 @@ ss <- soilDB::get_soilseries_from_NASIS()
 mis_compname <- mis_compname[tolower(mis_compname) %in% tolower(gsub("^ | $", "", ss$soilseriesname))]
 
 # replace components with missing pmkind from same named components from gNATSGO
-mis_compname_pmkind <- site(f_us) %>%
+mis_compname_pmkind <- aqp::site(f_us) %>%
   mutate(compname = tolower(compname)) %>%
-  filter(compname %in% tolower(mis_compname)) %>%
+  # filter(compname %in% tolower(mis_compname)) %>%
   group_by(compname, pmkind) %>%
   summarize(comppct_r = sum(comppct_r, na.rm = TRUE)) %>%
   group_by(compname) %>%
@@ -314,7 +314,7 @@ write.csv(mu_agg, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-s
 
 
 
-# rasterize
+# rastify
 
 ```{r}
 
@@ -395,5 +395,161 @@ tmap_pmkind + png(filename = "gnatsgo_pmkind2.png", width = 8, height = 5, units
 
 ```
 
+
+# STASTGO
+
+```{r}
+
+library(raster)
+library(terra)
+
+g_r <- rast("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/mlra_rs.tif")
+names(g_r) <- "statsgo_mukey"
+
+statsgo <- vect("D:/geodata/soils/wss_gsmsoil_US_[2016-10-13]/gsmsoilmu_a_us.shp")
+idx <- as.integer(statsgo$MUKEY)
+g_r <- rasterize(statsgo, g_r, field = idx)
+writeRaster(g_r, filename = "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO_move/statsgo_mukey.tif", wopt = list(datatype = "INT4U"), overwrite = TRUE)
+
+
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/gsp_salinity_fetchGDB.RData")
+
+# SDA
+library(soilDB)
+mu <- get_mapunit_from_SDA(WHERE = "areasymbol = 'US'")
+idx <- c(0, rep(1500, 10) * 1:10)
+mu$idx <- as.character(cut(1:nrow(mu), breaks = idx))
+co <- by(mu, mu$idx, function(x){
+  co <- get_component_from_SDA(WHERE = paste0("mukey IN ('", paste0(x$mukey, collapse = "', '"), "')"), childs = FALSE)
+})
+co <- do.call("rbind", co)
+
+mis_compname_pmkind$compname <- tolower(mis_compname_pmkind$compname)
+mu_agg_pmkind <- co %>%
+  mutate(compname = tolower(compname),
+         mukey    = NULL
+         ) %>%
+  left_join(select(mu, mukey, nationalmusym), by = "nationalmusym") %>%
+  left_join(select(mis_compname_pmkind, compname, pmkind), by = "compname") %>%
+  filter(!is.na(pmkind)) %>%
+  group_by(mukey, pmkind) %>%
+  summarize(comppct_r = sum(comppct_r, na.rm = TRUE)) %>%
+  arrange(mukey, - comppct_r) %>%
+  filter(!duplicated(mukey)) %>%
+  select(- comppct_r) %>%
+  right_join(select(mu, mukey), by = "mukey") %>%
+  as.data.frame()
+
+mu_agg_pmkind <- within(mu_agg_pmkind, {
+  pmkind2 = as.character(pmkind)
+  pmkind2[is.na(pmkind2)] =  "z_missing"
+  # Mine
+  pmkind2[grepl("Human|mine spoil|Mine|Dredge spoils", pmkind2)] = "Mine spoil or earthy fill"
+  pmkind2[grepl("Marine|Glaciomarine|Lagoonal deposits|Fluviomarine deposits|Estuarine deposits|Greensands", pmkind2)] = "Marine deposits"
+  pmkind2[grepl("mixed", pmkind2)] = NA
+  # Others
+  pmkind2[grepl("Residuum|grus|igneous|Saprolite|sandstone|limestone|shale|conglomerate", pmkind2, ignore.case = TRUE)] = "Residuum"
+  # Glacial
+  pmkind2[grepl("till|Till|Drift", pmkind2)] = "Till"
+  pmkind2[grepl("Glaciofluvial deposits|Outwash", pmkind2)] = "Outwash"
+  pmkind2[grepl("Glaciolacustrine deposits", pmkind2)] = "Lacustrine deposits"
+  # Colluvium
+  pmkind2[grepl("Valley side alluvium|Slope alluvium|Creep deposits|Pedisediment|Cryoturbate|Colluvium", pmkind2)] = "Colluvium"
+  pmkind2[grepl("spread|slide|Earthflow|flow deposits|Debris|Talus|rock|Scree|mass movement", pmkind2, ignore.case = TRUE)] = "Mass movement deposits"
+  # Ash
+  pmkind2[grepl("Pyroclastic|Tephra|Ash flow|volcanic ash|Lahar deposits|Pyroclastic flow|Tuff|Scoria|Cinders|Pumice", pmkind2, ignore.case = TRUE)] = "Volcanic ash"
+  # Alluvium
+  pmkind2[grepl("Overbank deposits|Alluvium", pmkind2)] = "Alluvium"
+  # Lacustrine
+  pmkind2[grepl("Backswamp deposit|Diatomaceous earth|Diamicton|Marl|Lacustrine", pmkind2)] = "Lacustrine deposits"
+  # Other
+  pmkind2[grepl("Loess", pmkind2, ignore.case = TRUE)] = "Loess"
+  pmkind2[grepl("Eolian|Beach sand", pmkind2)] = "Eolian deposits"
+  # Organic
+  pmkind2[grepl("organic|Organic|Coprogenic material", pmkind2)] = "Organic material"
+  })
+
+
+mu_agg_pmkind <- within(mu_agg_pmkind, {
+  mukey   = as.numeric(mukey)
+  pmkind3 = as.integer(factor(pmkind2, levels = sort(unique(c(mu_agg$pmkind2, "z_missing")))))
+})
+names(mu_agg_pmkind)[1] <- "ID"
+
+
+g_r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO_move/statsgo_mukey.tif")
+levels(g_r) <- mu_agg_pmkind
+
+vars <- c("pmkind3", "ph_r.i0-30", "ph_r.i30-100", "ec_r.i0-30", "ec_r.i30-100")[1]
+lapply(vars, function(x) {
+  cat(x, as.character(Sys.time()), "\n")
+  # beginCluster(type = "SOCK")
+  deratify(g_r, att = x, 
+           filename = paste0("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/statsgo_", x, ".tif"),
+           options = c("COMPRESS=DEFLATE"), 
+           overwrite = TRUE, progress = "text" 
+           )
+  # endCluster()
+  cat(x, as.character(Sys.time()), "\n")
+  })
+
+
+natsgo_r  <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/ssurgo_pm_lu3_rs_mode.tif")
+statsgo_r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/statsgo_pmkind3.tif")
+pmkind <- merge(natsgo_r, statsgo_r, overlap = TRUE, filename = "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/pmkind3.tif", progress = "text", overwrite = TRUE)
+
+  
+```
+
+
+
+# Reclassify MLRAs
+
+```{r mlra}
+
+# SSURGO CONUS
+library(raster)
+path <- "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO"
+lf <- list.files(path)
+lf <- lf[grepl(".tif$", lf)]
+ssurgo_rs <- stack(file.path(path, lf))
+names(ssurgo_rs) <- gsub(".tif", "", lf)
+ssurgo_vars <- names(ssurgo_rs)
+
+# classify SSURGO derivatives
+samp <- na.exclude(raster::sampleRegular(ssurgo_rs, 30000, sp = TRUE)@data)
+samp.sc <- scale(samp[-1])
+samp.dist <- dist(samp.sc)
+
+samp.sil <- sapply(2:35, function(i) {
+  cat("cluster", i, "\n")
+  k <- kmeans(samp.sc, centers = i, iter.max = 100)
+  k.sil <- summary(silhouette(k$cluster, samp.dist))$avg.width
+})
+plot(2:35, samp.sil, type = "l")
+points(2:35, samp.sil)
+samp.k <- kmeans(samp.sc, center = 19, iter.max = 100)
+samp.k <- data.frame(mlra = as.character(samp$mlra_rs), cluster = as.character(samp.k$cluster))
+
+
+# determine dominant cluster per MLRA
+samp.k.p <- prop.table(table(samp.k$mlra, samp.k$cluster), margin = 1)
+samp.k.p <- as.data.frame(samp.k.p, stringsAsFactors = FALSE)
+names(samp.k.p) <- c("mlra", "cluster", "pct")
+samp.k.p <- samp.k.p[order(samp.k.p$mlra, - samp.k.p$pct), ]
+samp.k.p <- samp.k.p[!duplicated(samp.k.p$mlra), ]
+names(samp.k.p)[1] <- "ID"
+samp.k.p[1:2] <- lapply(samp.k.p[1:2], as.integer)
+
+
+# reclassify MLRA layer
+mlra_r <- ssurgo_rs$mlra_rs
+mlra_r <- ratify(mlra_r)
+rat <- levels(mlra_r)[[1]]
+rat <- merge(rat, samp.k.p, by = "ID", all.x = TRUE, sort = FALSE)
+levels(mlra_r) <- rat
+mlra_r2 <- deratify(mlra_r, att = "cluster", filename = "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/mlra_rs_k19.tif")
+
+```
 
           

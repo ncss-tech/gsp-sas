@@ -67,8 +67,8 @@ load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compac
 rs   <- stack(isric_rs, other_rs, ssurgo_rs)
 data <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 data <- within(data, {
-  ssurgo_pm_lu3_rs_mode[is.na(ssurgo_pm_lu3_rs_mode)] = "missing"
   ssurgo_pm_lu3_rs_mode = as.factor(ssurgo_pm_lu3_rs_mode)
+  statsgo_pmkind3       = as.factor(statsgo_pmkind3)
   mlra_rs               = as.factor(mlra_rs)
   nlcd_2016_conus       = as.factor(nlcd_2016_conus)
   })
@@ -80,8 +80,6 @@ data <- within(data, {
 # Data Splitting
 
 ```{r}
-
-load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
 
 # split dataset into training and testing
 vars <- names(data)[grepl("ph_ptf.|ec_ptf.|esp.", names(data))]
@@ -214,7 +212,7 @@ vars <- c("ph_ptf.000_030_cm",
           isric_vars, 
           other_vars,
           # remove matching ssurgo derivative
-          ssurgo_vars[!grepl("ssurgo_ptph", ssurgo_vars)]
+          ssurgo_vars
           )
 train2 <- na.exclude(train[vars])
 
@@ -238,12 +236,18 @@ ph_rf_t50 <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[idx],
                     )
 
 # top 25 variables
-idx <- which(names(train2) %in% fs_b_stats$ph_ptf.000_030_cm$variable[1:25])
-ph_rf_t25 <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[-1], 
-                    quantreg = TRUE, importance = "permutation",
+idx <- which(
+  names(train2) %in%
+    c(as.character(fs_b_stats$ph_ptf.000_030_cm$variable[1:26]),  
+      "mlra_rs", "ssurgo_pm_lu3_rs_mode_v2")
+  )
+ph_rf_t25 <- ranger(ph_ptf.000_030_cm ~ ., data = train2[c(1, idx)], 
+                    importance = "permutation", quantreg = TRUE, # importance = "impurity",
+                    mtry = 8, min.node.size = 6,
                     respect.unordered.factors = NULL,
                     seed = 111 
                     )
+
 
 # uncorrelated variables
 idx <- names(train2) %in% fs_b_stats$ph_ptf.000_030_cm$variable[fs_b_stats$ph_ptf.000_030_cm$decision == "Confirmed"] & sapply(train2, is.numeric)
@@ -251,7 +255,6 @@ vars_cor <- findCorrelation(x = cor(train2[idx], use = "complete.obs"), names = 
 vars <- c(vars_cor, ssurgo_vars[1:2], "nlcd_2016_conus")
 ph_rf_cor <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[vars_cor], 
                     quantreg = TRUE,importance = "permutation",
-                    respect.unordered.factors = FALSE,
                     seed = 111 
                     )
 
@@ -259,9 +262,7 @@ ph_rf_cor <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[vars_cor],
 
 
 # variable importance plots
-library(vip)
-
-vip(ph_rf_all, 20)
+vip::vip(ph_rf_t25, 50)
 
 
 # residual plots
@@ -318,8 +319,11 @@ load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RDat
 
 predfun <- function(model, ...) predict(model, ...)$predictions
 
-ph_030_r <- predict(rs, ph_rf_030$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_030.tif")
-
+idx <- which(
+  names(rs) %in% ph_rf_t25$forest$independent.variable.names
+  )
+rs2 <- rs[[idx]]
+ph_030_r <- predict(rs2, ph_rf_t25, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL.tif")
 
 ```
 
