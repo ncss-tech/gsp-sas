@@ -159,7 +159,7 @@ fs_b_stats <- lapply(fs_b_ph, function(x) {
   })
 
 library(ggplot2)
-ggplot(fs_b_stats$ph_ptf.000_030_cm, aes(x = varImp, y = variable)) +
+ggplot(fs_b_stats$ph_ptf.000_030_cm[1:25, ], aes(x = varImp, y = variable)) +
   geom_point()
 
 
@@ -283,11 +283,15 @@ vars <- c("ph_ptf.000_030_cm",
           isric_vars, 
           other_vars,
           # remove matching ssurgo derivative
-          ssurgo_vars[!grepl("ssurgo_ptph", ssurgo_vars)]
+          c("mlra_rs", "ssurgo_pm_lu3_rs_mode_v2")
           )
 train2 <- na.exclude(train[vars])
 
-idx <- which(names(train2) %in% fs_b_stats$ph_ptf.000_030_cm$variable[1:25])
+idx <- which(names(train2) %in%
+               c(as.character(fs_b_stats$ph_ptf.000_030_cm$variable[1:23]),
+                 c("mlra_rs", "ssurgo_pm_lu3_rs_mode_v2")
+                 ))
+                                  
 ph_rf_030 <- train(y = train2$ph_ptf.000_030_cm, x = train2[idx], 
                method = "ranger", quantreg = TRUE,
                importance = "permutation",
@@ -299,11 +303,15 @@ vars <- c("ph_ptf.030_100_cm",
           isric_vars, 
           other_vars,
           # remove matching ssurgo derivative
-          ssurgo_vars[!grepl("ssurgo_ptph", ssurgo_vars)]
+          c("mlra_rs", "ssurgo_pm_lu3_rs_mode_v2")
           )
 train2 <- na.exclude(train[vars])
 
-idx <- which(names(train2) %in% fs_b_stats$ph_ptf.030_100_cm$variable[1:25])
+idx <- which(names(train2) %in%
+               c(as.character(fs_b_stats$ph_ptf.030_100_cm$variable[1:23]),
+                 c("mlra_rs", "ssurgo_pm_lu3_rs_mode_v2")
+                 ))
+ 
 ph_rf_100 <- train(y = train2$ph_ptf.030_100_cm, x = train2[idx], 
                method = "ranger", quantreg = TRUE, 
                importance = "permutation",
@@ -320,10 +328,36 @@ load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RDat
 predfun <- function(model, ...) predict(model, ...)$predictions
 
 idx <- which(
-  names(rs) %in% ph_rf_t25$forest$independent.variable.names
+  names(rs) %in% ph_rf_030$finalModel$forest$independent.variable.names
   )
 rs2 <- rs[[idx]]
-ph_030_r <- predict(rs2, ph_rf_t25, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL.tif")
+ph_030_r <- predict(rs2, ph_rf_030$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL_final.tif")
+
+
+idx <- which(
+  names(rs) %in% ph_rf_100$finalModel$forest$independent.variable.names
+  )
+rs2 <- rs[[idx]]
+ph_100_r <- predict(rs2, ph_rf_100$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_100_qrf_mlra_pm_NULL_final.tif")
+
+
+```
+
+
+
+# Model Uncertainty
+
+```{r}
+
+library(soilassessment)
+
+idx <- which(
+  names(rs) %in% ph_rf_030$finalModel$forest$independent.variable.names
+  )
+rs2 <- rs[[idx]]
+predictors <- as(rs2, "SpatialGridDataFrame")
+
+
 
 ```
 
