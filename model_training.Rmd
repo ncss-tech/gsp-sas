@@ -283,17 +283,17 @@ vars <- c("ph_ptf.000_030_cm",
           isric_vars, 
           other_vars,
           # remove matching ssurgo derivative
-          c("mlra_rs", "ssurgo_pm_lu3_rs_mode_v2")
+          c("mlra_rs", "statsgo_pmkind3")
           )
 train2 <- na.exclude(train[vars])
 
 idx <- which(names(train2) %in%
                c(as.character(fs_b_stats$ph_ptf.000_030_cm$variable[1:23]),
-                 c("mlra_rs", "ssurgo_pm_lu3_rs_mode_v2")
+                 c("mlra_rs", "statsgo_pmkind3")
                  ))
                                   
-ph_rf_030 <- train(y = train2$ph_ptf.000_030_cm, x = train2[idx], 
-               method = "ranger", quantreg = TRUE,
+ph_rf_030_v2 <- train(y = train2$ph_ptf.000_030_cm, x = train2[idx], 
+               method = "ranger", quantreg = TRUE, seed = 111,
                importance = "permutation",
                trControl = trainControl(method = "cv", number = 10, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
                )
@@ -303,27 +303,25 @@ vars <- c("ph_ptf.030_100_cm",
           isric_vars, 
           other_vars,
           # remove matching ssurgo derivative
-          c("mlra_rs", "ssurgo_pm_lu3_rs_mode_v2")
+          c("mlra_rs", "statsgo_pmkind3_v2")
           )
 train2 <- na.exclude(train[vars])
 
 idx <- which(names(train2) %in%
                c(as.character(fs_b_stats$ph_ptf.030_100_cm$variable[1:23]),
-                 c("mlra_rs", "ssurgo_pm_lu3_rs_mode_v2")
+                 c("mlra_rs", "statsgo_pmkind3_v2")
                  ))
  
-ph_rf_100 <- train(y = train2$ph_ptf.030_100_cm, x = train2[idx], 
-               method = "ranger", quantreg = TRUE, 
+ph_rf_100_v2 <- train(y = train2$ph_ptf.030_100_cm, x = train2[idx], 
+               method = "ranger", quantreg = TRUE, seed = 111,
                importance = "permutation",
                # na.action = na.exclude,
                trControl = trainControl(method = "cv", number = 10, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
                )
+print(ph_rf_030_v2)
+print(ph_rf_100_v2)
 
-print(ph_rf_030)
-print(ph_rf_100)
-
-# save(ph_rf_030, ph_rf_100, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
-load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
+# save(ph_rf_030, ph_rf_100, ph_rf_030_v2, ph_rf_100_v2, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
 
 predfun <- function(model, ...) predict(model, ...)$predictions
 
@@ -331,14 +329,14 @@ idx <- which(
   names(rs) %in% ph_rf_030$finalModel$forest$independent.variable.names
   )
 rs2 <- rs[[idx]]
-ph_030_r <- predict(rs2, ph_rf_030$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL_final.tif")
+ph_030_r <- predict(rs2, ph_rf_030$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL_final2.tif")
 
 
 idx <- which(
   names(rs) %in% ph_rf_100$finalModel$forest$independent.variable.names
   )
 rs2 <- rs[[idx]]
-ph_100_r <- predict(rs2, ph_rf_100$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_100_qrf_mlra_pm_NULL_final.tif")
+ph_100_r <- predict(rs2, ph_rf_100$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_100_qrf_mlra_pm_NULL_final2.tif")
 
 
 ```
@@ -349,14 +347,70 @@ ph_100_r <- predict(rs2, ph_rf_100$finalModel, fun = predfun, index = 1, progres
 
 ```{r}
 
-library(soilassessment)
+load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
 
+
+# predict using test data
+idx <- names(test) %in% 
+  c("pedon_key", "ph_ptf.000_030_cm",
+    ph_rf_030_v2$finalModel$forest$independent.variable.names 
+    )
+test2 <- na.exclude(test[idx])
+test2$ph_030_p <- predict(ph_rf_030_v2, newdata = test2)
+
+
+
+# plot
+library(ggplot2)
+
+ggplot(test2, aes(x = ph_ptf.000_030_cm, y = ph_030_p)) +
+  geom_point(alpha = 0.1) +
+  geom_abline(col = "blue", size = 1)
+
+
+
+# accuracy metrics on test data
+stratia_f <- function(measure, predict) {
+  data.frame(
+    Bias     =      mean( predict - measure,    na.rm = TRUE),
+    RMSE     = sqrt(mean((predict - measure)^2, na.rm = TRUE)),
+    Rsquared =      cor(  predict,  measure)^2,
+    NSE      = 1 -  sum(  predict - measure)^2 /
+      sum((predict - mean(measure, na.rm = TRUE))^2, na.rm = TRUE)
+  )}
+stratia <- stratia_f(test2$ph_030_p, test2$ph_ptf.000_030_cm)
+write.csv(stratia, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/ph_030_validmodel_stats.csv")
+
+
+
+# compare distributions
+pkg <- c("sf", "sp", "raster", "soilassessment")
+sapply(pkg, require, character.only = TRUE)
+
+test_sf <- s_mps_sf[s_mps_sf$pedon_key %in% clhs_pkey, ]
+test_sp <- as(test_sf, "Spatial")
+vars <- c(ph_030 = "D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL_final.tif",
+          ph_100 = "D:geodata/project_data/gsp-sas/ph_100_qrf_mlra_pm_NULL_final.tif")
+rs <- stack(vars)
+rs <- as(rs, "SpatialGridDataFrame")
+
+featureRep(rs["ph_030"], test_sp)
+
+print(rbind(
+  raster = summary(rs$ph_030)[1:6], 
+  test   = summary(test2$ph_030_p)
+  ), digits = 2)
+
+
+
+# bootstrap
 idx <- which(
   names(rs) %in% ph_rf_030$finalModel$forest$independent.variable.names
   )
 rs2 <- rs[[idx]]
 predictors <- as(rs2, "SpatialGridDataFrame")
-
 
 
 ```
