@@ -67,10 +67,10 @@ load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compac
 rs   <- stack(isric_rs, other_rs, ssurgo_rs)
 data <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 data <- within(data, {
-  ssurgo_pm_lu3_rs_mode = as.factor(ssurgo_pm_lu3_rs_mode)
-  statsgo_pmkind3       = as.factor(statsgo_pmkind3)
-  mlra_rs               = as.factor(mlra_rs)
-  nlcd_2016_conus       = as.factor(nlcd_2016_conus)
+  ssurgo_pm_lu3_rs_mode_v2 = as.factor(ssurgo_pm_lu3_rs_mode_v2)
+  statsgo_pmkind3          = as.factor(statsgo_pmkind3)
+  mlra_rs                  = as.factor(mlra_rs)
+  nlcd_2016_conus          = as.factor(nlcd_2016_conus)
   })
 
 ```
@@ -353,12 +353,14 @@ load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compac
 
 
 # predict using test data
-idx <- names(test) %in% 
-  c("pedon_key", "ph_ptf.000_030_cm",
-    ph_rf_030_v2$finalModel$forest$independent.variable.names 
-    )
+idx <- names(test)[names(test) %in% 
+  c("pedon_key", "ph_ptf.000_030_cm", "ph_ptf.030_100_cm",
+    unique(c(ph_rf_030_v2$finalModel$forest$independent.variable.names, 
+           ph_rf_100_v2$finalModel$forest$independent.variable.names)) 
+    )]
 test2 <- na.exclude(test[idx])
 test2$ph_030_p <- predict(ph_rf_030_v2, newdata = test2)
+test2$ph_100_p <- predict(ph_rf_100_v2, newdata = test2)
 
 
 
@@ -369,6 +371,9 @@ ggplot(test2, aes(x = ph_ptf.000_030_cm, y = ph_030_p)) +
   geom_point(alpha = 0.1) +
   geom_abline(col = "blue", size = 1)
 
+ggplot(test2, aes(x = ph_ptf.030_100_cm, y = ph_100_p)) +
+  geom_point(alpha = 0.1) +
+  geom_abline(col = "blue", size = 1)
 
 
 # accuracy metrics on test data
@@ -380,8 +385,12 @@ stratia_f <- function(measure, predict) {
     NSE      = 1 -  sum(  predict - measure)^2 /
       sum((predict - mean(measure, na.rm = TRUE))^2, na.rm = TRUE)
   )}
-stratia <- stratia_f(test2$ph_030_p, test2$ph_ptf.000_030_cm)
-write.csv(stratia, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/ph_030_validmodel_stats.csv")
+
+ph_030_stratia <- stratia_f(test2$ph_030_p, test2$ph_ptf.000_030_cm)
+ph_100_stratia <- stratia_f(test2$ph_100_p, test2$ph_ptf.030_100_cm)
+
+write.csv(ph_030_stratia, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/ph_030_validmodel_stats.csv")
+write.csv(ph_100_stratia, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/ph_100_validmodel_stats.csv")
 
 
 
@@ -397,12 +406,17 @@ rs <- stack(vars)
 rs <- as(rs, "SpatialGridDataFrame")
 
 featureRep(rs["ph_030"], test_sp)
+featureRep(rs["ph_100"], test_sp)
 
 print(rbind(
   raster = summary(rs$ph_030)[1:6], 
   test   = summary(test2$ph_030_p)
   ), digits = 2)
 
+print(rbind(
+  raster = summary(rs$ph_100)[1:6], 
+  test   = summary(test2$ph_100_p)
+  ), digits = 2)
 
 
 # bootstrap
