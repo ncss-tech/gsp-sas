@@ -58,13 +58,15 @@ names(ssurgo_rs) <- gsub(".tif", "", lf)
 ssurgo_vars <- names(ssurgo_rs)
 
 
+rs   <- stack(isric_rs, other_rs, ssurgo_rs)
+
+
 
 # Extract geodata
 library(sf)
 
 load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
 
-rs   <- stack(isric_rs, other_rs, ssurgo_rs)
 data <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 data <- within(data, {
   ssurgo_pm_lu3_rs_mode_v2 = as.factor(ssurgo_pm_lu3_rs_mode_v2)
@@ -355,8 +357,9 @@ load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compac
 # predict using test data
 idx <- names(test)[names(test) %in% 
   c("pedon_key", "ph_ptf.000_030_cm", "ph_ptf.030_100_cm",
-    unique(c(ph_rf_030_v2$finalModel$forest$independent.variable.names, 
-           ph_rf_100_v2$finalModel$forest$independent.variable.names)) 
+    unique(c(
+      ph_rf_030_v2$finalModel$forest$independent.variable.names,
+      ph_rf_100_v2$finalModel$forest$independent.variable.names))
     )]
 test2 <- na.exclude(test[idx])
 test2$ph_030_p <- predict(ph_rf_030_v2, newdata = test2)
@@ -419,12 +422,21 @@ print(rbind(
   ), digits = 2)
 
 
-# bootstrap
-idx <- which(
-  names(rs) %in% ph_rf_030$finalModel$forest$independent.variable.names
-  )
+# bootstrap prediction interval
+library(caret)
+source("C:/workspace2/github/ncss-tech/gsp-sas/predUncertain")
+
+vars <- ph_rf_030$finalModel$forest$independent.variable.names
+idx <- which(names(rs) %in% vars)
 rs2 <- rs[[idx]]
-predictors <- as(rs2, "SpatialGridDataFrame")
+
+data2 <- as(s_mps_sf["ph_ptf.000_030_cm"], "Spatial")
+data2 <- data2[!is.na(data2$ph_ptf.000_030_cm), ]
+ex    <- extract(rs2, data2)
+idx   <- complete.cases(as.data.frame(ex))
+data2 <- data2[idx, ]
+
+ph_pred_uncert <- predUncertain(data2, rs2, 3, 95, "ranger", quantreg = TRUE, seed = 111)
 
 
 ```

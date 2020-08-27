@@ -403,6 +403,7 @@ tmap_pmkind + png(filename = "gnatsgo_pmkind2.png", width = 8, height = 5, units
 library(raster)
 library(terra)
 
+# rasterize STATSGO
 g_r <- rast("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/mlra_rs.tif")
 names(g_r) <- "statsgo_mukey"
 
@@ -414,16 +415,63 @@ writeRaster(g_r, filename = "D:/geodata/project_data/gsp-sas/1km covariates/SSUR
 
 load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/gsp_salinity_fetchGDB.RData")
 
+
+
 # SDA
 library(soilDB)
+
 mu <- get_mapunit_from_SDA(WHERE = "areasymbol = 'US'")
 idx <- c(0, rep(1500, 10) * 1:10)
 mu$idx <- as.character(cut(1:nrow(mu), breaks = idx))
-co <- by(mu, mu$idx, function(x){
-  co <- get_component_from_SDA(WHERE = paste0("mukey IN ('", paste0(x$mukey, collapse = "', '"), "')"), childs = FALSE)
+f <- by(mu, mu$idx, function(x){
+  f <- fetchSDA(WHERE = paste0("mukey IN ('", paste0(x$mukey, collapse = "', '"), "')"), childs = FALSE, duplicates = TRUE)
 })
-co <- do.call("rbind", co)
+f <- union(f)
 
+
+
+# pH weighted average
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
+
+co_agg <- aqp::segment(aqp::horizons(f), intervals = c(0, 30, 100), hzdepcols = c("hzdept_r", "hzdepb_r")) %>%
+  mutate(ph_h2o     = ph1to1h2o_r,
+         )
+# pedotransfer functions
+co_agg$ph_ptf <- predict(ph_lm,  co_agg)
+# aggregate components
+co_agg <- co_agg %>%
+  mutate(hzdepb_r = ifelse(is.na(hzdepb_r), hzdept_r + 1, hzdepb_r),
+         hzdepm_r = hzdepb_r - hzdept_r
+         ) %>%
+  # values come back NA if weights (w) are missing
+  group_by(cokey, segment_id) %>%
+  summarize(ph_r  = log10(weighted.mean(1/10^-ph_ptf, w = hzdepm_r, na.rm = TRUE))
+            ) %>%
+  ungroup() %>%
+  right_join(select(aqp::site(f), mukey, cokey, comppct_r), by = "cokey")
+
+
+# aggregate mapunits
+mu_agg_h <- co_agg %>%
+  mutate(comppct_r = ifelse(is.na(comppct_r), 0, comppct_r)) %>%
+  group_by(mukey, segment_id) %>%
+  summarize(ph_r = log10(weighted.mean(1/10^-ph_r, w = comppct_r, na.rm = TRUE))
+            ) %>%
+  ungroup() %>%
+  filter(!is.na(segment_id)) %>%
+  as.data.frame()
+mu_agg_h$segment_id <- paste0("i", mu_agg_h$segment_id)
+mu_agg_h2 <- reshape(mu_agg_h,
+                     direction = "wide",
+                     idvar     = "mukey",
+                     timevar   = "segment_id",
+                     v.names   = c("ph_r")
+                     )
+attributes(mu_agg_h2)$reshapeWide <- NULL
+
+
+
+# extract dominant parent material
 mis_compname_pmkind$compname <- tolower(mis_compname_pmkind$compname)
 mu_agg_pmkind <- co %>%
   mutate(compname = tolower(compname),
@@ -477,14 +525,23 @@ mu_agg_pmkind <- within(mu_agg_pmkind, {
 names(mu_agg_pmkind)[1] <- "ID"
 
 
-g_r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO_move/statsgo_mukey.tif")
-levels(g_r) <- mu_agg_pmkind
 
-vars <- c("pmkind3", "ph_r.i0-30", "ph_r.i30-100", "ec_r.i0-30", "ec_r.i30-100")[1]
+# deratify STATSGO
+library(raster)
+
+names(mu_agg_h2)[1] <- "ID"
+mu_agg_h2[is.na(mu_agg_h2$`ph_r.i0-30`),   "ph_r.i0-30"] <- 7
+mu_agg_h2[is.na(mu_agg_h2$`ph_r.i30-100`), "ph_r.i30-100"] <- 7
+summary(mu_agg_h2)
+
+g_r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO_move/statsgo_mukey.tif")
+levels(g_r) <- mu_agg_h2
+
+vars <- c("pmkind3", "ph_r.i0-30", "ph_r.i30-100")[2:3]
 lapply(vars, function(x) {
   cat(x, as.character(Sys.time()), "\n")
   # beginCluster(type = "SOCK")
-  deratify(g_r, att = x, 
+  raster::deratify(g_r, att = x, 
            filename = paste0("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/statsgo_", x, ".tif"),
            options = c("COMPRESS=DEFLATE"), 
            overwrite = TRUE, progress = "text" 
@@ -498,6 +555,15 @@ natsgo_r  <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/ssurg
 statsgo_r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/statsgo_pmkind3.tif")
 pmkind <- merge(natsgo_r, statsgo_r, overlap = TRUE, filename = "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/pmkind3.tif", progress = "text", overwrite = TRUE)
 
+
+natsgo_ph030_r  <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/ssurgo_ptph30_rs_med.tif")
+statsgo_ph030_r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/statsgo_ph_r.i0-30.tif")
+merge(natsgo_ph030_r, statsgo_ph030_r, overlap = TRUE, filename = "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/ssurgo_ptph30_rs_med_v2.tif", progress = "text", overwrite = TRUE)
+
+
+natsgo_ph100_r  <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/ssurgo_ptph100_rs_med.tif")
+statsgo_ph100_r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/statsgo_ph_r.i30-100.tif")
+merge(natsgo_ph100_r, statsgo_ph100_r, overlap = TRUE, filename = "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/ssurgo_ptph100_rs_med_v2.tif", progress = "text", overwrite = TRUE)
   
 ```
 
