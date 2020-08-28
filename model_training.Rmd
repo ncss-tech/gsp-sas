@@ -424,7 +424,7 @@ print(rbind(
 
 # bootstrap prediction interval
 library(caret)
-source("C:/workspace2/github/ncss-tech/gsp-sas/predUncertain")
+source("https://raw.githubusercontent.com/ncss-tech/gsp-sas/master/predUncertain.R")
 
 vars <- ph_rf_030$finalModel$forest$independent.variable.names
 idx <- which(names(rs) %in% vars)
@@ -436,7 +436,7 @@ ex    <- extract(rs2, data2)
 idx   <- complete.cases(as.data.frame(ex))
 data2 <- data2[idx, ]
 
-ph_pred_uncert <- predUncertain(data2, rs2, 3, 95, "ranger", quantreg = TRUE, seed = 111)
+ph_pred_uncert <- predUncertain(data2, rs2, 3, 95, "ranger")
 
 
 ```
