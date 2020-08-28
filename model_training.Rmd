@@ -68,9 +68,7 @@ load(file = "K:/GSP/modeling/LDM-compact_20200709.RData")
 rs   <- stack(isric_rs, other_rs, ssurgo_rs)
 data <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 data <- within(data, {
-  #ssurgo_pm_lu3_rs_mode[is.na(ssurgo_pm_lu3_rs_mode)] = "missing"
   #ssurgo_pm_lu3_rs_mode_v2 = as.factor(ssurgo_pm_lu3_rs_mode_v2)
-  #mlra_rs[is.na(mlra_rs)] = "missing"
   mlra_rs = as.factor(mlra_rs)
   #nlcd_2016_conus[is.na(nlcd_2016_conus)] = "missing"
   nlcd_2016_conus = as.factor(nlcd_2016_conus)
@@ -130,20 +128,11 @@ sp_vars <- names(data)[grepl("ec_ptf.0", names(data))]
 
 # Boruta
 library(Boruta)
-fs_b <- lapply(sp_vars, function(x) {
-  cat(x, as.character(Sys.time()), "\n")
-  train2 <- data[c(x, 
-                   isric_vars, 
-                   other_vars 
-                   )]
-  train2 <- na.exclude(train2)
-  names(train2) <- gsub("\\.", "_", names(train2))
-  test <- Boruta::Boruta(x = train2[-1], y = log(train2[[1]]+0.1), maxRuns = 35, doTrace = 1)
-})
+
+#without ssurgo vars
 #fs_b <- lapply(sp_vars, function(x) {
 #  cat(x, as.character(Sys.time()), "\n")
 #  train2 <- data[c(x, 
-#                  c(ssurgo_vars),
 #                   isric_vars, 
 #                   other_vars 
 #                   )]
@@ -151,6 +140,20 @@ fs_b <- lapply(sp_vars, function(x) {
 #  names(train2) <- gsub("\\.", "_", names(train2))
 #  test <- Boruta::Boruta(x = train2[-1], y = log(train2[[1]]+0.1), maxRuns = 35, doTrace = 1)
 #})
+
+#with ssurgo vars
+fs_b <- lapply(sp_vars, function(x) {
+  cat(x, as.character(Sys.time()), "\n")
+  train2 <- data[c(x, 
+                 c(ssurgo_vars),
+                   isric_vars, 
+                   other_vars 
+                   )]
+  train2 <- na.exclude(train2)
+  names(train2) <- gsub("\\.", "_", names(train2))
+  test <- Boruta::Boruta(x = train2[-1], y = log(train2[[1]]+0.1), maxRuns = 35, doTrace = 1)
+})
+
 names(fs_b) <- sp_vars
 
 save(fs_b, file = "K:/GSP/modeling/predict/fs_boruta_ec.RData", overwrite = T)
@@ -203,9 +206,8 @@ load(file = "K:/GSP/modeling/predict/training_data.RData")
 #filter training data 
 vars <- c("ec_ptf.000_030_cm",
           isric_vars, 
-          other_vars
-          # remove matching ssurgo derivative
-          #ssurgo_vars[!grepl("ssurgo_ptec", ssurgo_vars)]
+          other_vars,
+          ssurgo_vars
           )
 train2 <- na.exclude(train[vars])
 
@@ -222,7 +224,7 @@ idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[fs_b_stats
 ec030_rf_all <- ranger(y = log(train2$ec_ptf.000_030_cm +0.1), x = train2[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
-                    respect.unordered.factors = FALSE,
+                    respect.unordered.factors = NULL,
                     seed = 111 
                     )
 
@@ -230,37 +232,49 @@ r2_ec030_all <- ec030_rf_all$r.squared
 
 #(2) half of confirmed variables
 fs_b_stats$ec_ptf.000_030_cm #to look at variables in ranked order
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[1:39])
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[1:43])
 #test model; no cv
 ec030_rf_half <- ranger(y = log(train2$ec_ptf.000_030_cm +0.1), x = train2[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
-                    respect.unordered.factors = FALSE,
+                    respect.unordered.factors = NULL,
                     seed = 111 
                     )
 
 r2_ec030_half <- ec030_rf_half$r.squared
 
-#(3) variables based on boruta plot (12 for 0-30)
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[1:13])
+#(3) variables based on boruta plot 
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[1:14])
 #test model; no cv
 ec030_rf_top <- ranger(y = log(train2$ec_ptf.000_030_cm +0.1), x = train2[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
-                    respect.unordered.factors = FALSE,
+                    respect.unordered.factors = NULL,
                     seed = 111 
                     )
 
 r2_ec030_top <- ec030_rf_top$r.squared
+
+#(4) top 25 variables
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[1:25])
+#test model; no cv
+ec030_rf_top25 <- ranger(y = log(train2$ec_ptf.000_030_cm +0.1), x = train2[idx], 
+                    quantreg = TRUE, 
+                    importance = "permutation",
+                    respect.unordered.factors = NULL,
+                    seed = 111 
+                    )
+
+r2_ec030_top25 <- ec030_rf_top$r.squared
+
 ec030_rf_half$variable.importance
 
 ##30-100cm##
 #filter training data 
 vars <- c("ec_ptf.030_100_cm",
           isric_vars, 
-          other_vars
-          # remove matching ssurgo derivative
-          #ssurgo_vars[!grepl("ssurgo_ptec", ssurgo_vars)]
+          other_vars,
+          ssurgo_vars
           )
 train2 <- na.exclude(train[vars])
 
@@ -270,7 +284,7 @@ idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[fs_b_stats
 ec100_rf_all <- ranger(y = log(train2$ec_ptf.030_100_cm +0.1), x = train2[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
-                    respect.unordered.factors = FALSE,
+                    respect.unordered.factors = NULL,
                     seed = 111 
                     )
 
@@ -278,28 +292,41 @@ r2_ec100_all <- ec100_rf_all$r.squared
 
 #(2) half of confirmed variables
 fs_b_stats$ec_ptf.030_100_cm #to look at variables in ranked order
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[1:40])
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[1:43])
 #test model; no cv
 ec100_rf_half <- ranger(y = log(train2$ec_ptf.030_100_cm +0.1), x = train2[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
-                    respect.unordered.factors = FALSE,
+                    respect.unordered.factors = NULL,
                     seed = 111 
                     )
 
 r2_ec100_half <- ec100_rf_half$r.squared
 
-#(3) variables based on boruta plot (14 for 30-100)
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[1:14])
+#(3) variables based on boruta plot 
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[1:19])
 #test model; no cv
 ec100_rf_top <- ranger(y = log(train2$ec_ptf.030_100_cm +0.1), x = train2[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
-                    respect.unordered.factors = FALSE,
+                    respect.unordered.factors = NULL,
                     seed = 111 
                     )
 
 r2_ec100_top <- ec100_rf_top$r.squared
+
+#(4) top 25 variables
+idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[1:25])
+#test model; no cv
+ec100_rf_top25 <- ranger(y = log(train2$ec_ptf.030_100_cm +0.1), x = train2[idx], 
+                    quantreg = TRUE, 
+                    importance = "permutation",
+                    respect.unordered.factors = NULL,
+                    seed = 111 
+                    )
+
+r2_ec100_top25 <- ec100_rf_top$r.squared
+
 ec100_rf_half$variable.importance
 
 #####model with cross validation#####
@@ -310,15 +337,22 @@ vars <- c("ec_ptf.000_030_cm",
           other_vars,
           ssurgo_vars
           )
-train2 <- na.exclude(train[vars])
+train1 <- na.exclude(train[vars])
 
 #qrf w/cv
-idx <- which(names(train2) %in% c(as.character(fs_b_stats$ec_ptf.000_030_cm$variable[1:39]), "statsgo_pmkind3"))
-ec_rf_030 <- train(y = log(train2$ec_ptf.000_030_cm +0.1), x = train2[idx], 
+idx <- which(names(train1) %in% 
+               c(as.character(fs_b_stats$ec_ptf.000_030_cm$variable[1:11]), 
+               c(as.character(fs_b_stats$ec_ptf.000_030_cm$variable[13:43]),
+               "statsgo_pmkind3"))) 
+
+ec_rf_030 <- train(y = log(train1$ec_ptf.000_030_cm +0.1), x = train1[idx], 
                method = "ranger", quantreg = TRUE, 
-               importance = "permutation", respect.unordered.factors = NULL, seed = 111,
+               importance = "permutation", 
+               #respect.unordered.factors = NULL, #needed if mlra is in the variables
+               seed = 111,
                trControl = trainControl(method = "cv", number = 10, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
                )
+
 ec_rf_030$finalModel
 
 ##30-100cm##
@@ -331,17 +365,26 @@ vars <- c("ec_ptf.030_100_cm",
 train2 <- na.exclude(train[vars])
 
 #qrf w/cv
-idx <- which(names(train2) %in% c(as.character(fs_b_stats$ec_ptf.030_100_cm$variable[1:40]), "mlra_rs", "statsgo_pmkind3"))
+idx <- which(names(train2) %in% 
+               c(as.character(fs_b_stats$ec_ptf.030_100_cm$variable[1:17]),   
+              c(as.character(fs_b_stats$ec_ptf.030_100_cm$variable[19:43]), #leave out mlra
+               "statsgo_pmkind3")))
+
 ec_rf_100 <- train(y = log(train2$ec_ptf.030_100_cm +0.1), x = train2[idx], 
                method = "ranger", quantreg = TRUE, 
-               importance = "permutation", respect.unordered.factors = NULL, seed = 111,
+               importance = "permutation", 
+               #respect.unordered.factors = NULL, #needed if mlra is in the variables
+               seed = 111,
                trControl = trainControl(method = "cv", number = 10, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
                )
+
+ec_rf_100$finalModel
 
 print(ec_rf_030)
 print(ec_rf_100)
 
-save(ec_rf_030, ec_rf_100, file = "K:/GSP/modeling/predict/ec_rf.RData")
+save(train1, train2, ec_rf_030, ec_rf_100, 
+     file = "K:/GSP/modeling/predict/ec_rf.RData")
 
 
 #####predict#####
@@ -350,10 +393,26 @@ load(file = "K:/GSP/modeling/predict/ec_rf.RData")
 
 predfun <- function(model, ...) predict(model, ...)$predictions
 
-ec_030_r <- predict(rs, ec_rf_030$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "K:/GSP/modeling/predict/ec_030_t.tif")
+idx <- which(
+  names(rs) %in% ec_rf_030$finalModel$forest$independent.variable.names
+  )
+rs2 <- rs[[idx]]
 
-ec_100_r <- predict(rs, ec_rf_100$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "K:/GSP/modeling/predict/ec_100_t.tif")
+ec_030_r <- predict(rs2, ec_rf_030$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "K:/GSP/modeling/predict/ec_030_t.tif")
 
+idx <- which(
+  names(rs) %in% ec_rf_100$finalModel$forest$independent.variable.names
+  )
+rs3 <- rs[[idx]]
+
+ec_100_r <- predict(rs3, ec_rf_100$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "K:/GSP/modeling/predict/ec_100_t.tif")
+
+#back-transform values
+ec_030_r_bt <- calc(ec_030_r, function(x) exp(x) - 0.1)
+writeRaster(ec_030_r_bt, "K:/GSP/modeling/predict/ec_030_bt.tif", overwrite = TRUE)
+
+ec_100_r_bt <- calc(ec_100_r, function(x) exp(x) - 0.1)
+writeRaster(ec_100_r_bt, "K:/GSP/modeling/predict/ec_100_bt.tif", overwrite = TRUE)
 ```
 
 
