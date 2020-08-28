@@ -383,14 +383,22 @@ lapply(vars, function(x) {
 # classify(x = r, rcl = mat, filename = "D:/geodata/soils/gnatsgo_fy20_30m_ec000030_v2.tif", overwrite = TRUE, wopt = list(gdal = c("COMPRESS=DEFLATE")))
 
 
-pmkind <- raster("D:/geodata/soils/gnatsgo_fy20_1km_pmkind3.tif")
+pmkind <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/ssurgo_pm_lu3_rs_mode_v2.tif")
+pmkind2 <- projectRaster(pmkind, crs = "+init=epsg:5070", method = "ngb")
+
+
+
+lv <- unique(mu_agg$pmkind2)
+lv[3] <- "NA"
 
 
 library(tmap)
-tmap_pmkind <- tm_shape(pmkind, raster.downsample = T) + 
+tmap_pmkind <- tm_shape(pmkind, projection = 5070, raster.downsample = T) + 
   tm_raster(palette = RColorBrewer::brewer.pal(13, name = "Paired"), labels = levels(as.factor(mu_agg$pmkind2)), breaks = 1:14, title = "Generalized Parent \n Material Kind") + 
-  tm_legend(legend.outside = TRUE)
-tmap_pmkind + png(filename = "gnatsgo_pmkind2.png", width = 8, height = 5, units = "in", res = 300)
+  tm_legend(legend.outside = TRUE) +
+  c
+tmap_pmkind + png(filename = "gnatsgo_pmkind3.png", width = 8, height = 5, units = "in", res = 300)
+dev.off()
 
 
 ```

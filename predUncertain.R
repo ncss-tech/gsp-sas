@@ -110,7 +110,7 @@ predUncertain <- function (indata, fgrid, k, z, model = "randomforest")
           bound = floor((nrow(dfram)/(1.2 * i)) * 1)
           butdat <- dfram[sample(nrow(dfram)), ][1:bound, 
           ]
-          rf1 = train(fml, data = butdat, method = "ranger", quantreg = TRUE, seed = 111, 
+          rf1 = train(fml, data = butdat, method = "ranger", quantreg = TRUE, 
                       trControl = trainControl(method = "cv", 
                                                number = k, returnResamp = "all", savePredictions = TRUE, 
                                                search = "random", verboseIter = FALSE))
