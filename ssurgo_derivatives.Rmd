@@ -393,7 +393,7 @@ lv[3] <- "NA"
 
 
 library(tmap)
-tmap_pmkind <- tm_shape(pmkind, projection = 5070, raster.downsample = T) + 
+tmap_pmkind <- tm_shape(pmkind2, projection = 5070, raster.downsample = T) + 
   tm_raster(palette = RColorBrewer::brewer.pal(13, name = "Paired"), labels = levels(as.factor(mu_agg$pmkind2)), breaks = 1:14, title = "Generalized Parent \n Material Kind") + 
   tm_legend(legend.outside = TRUE) +
   c
@@ -422,6 +422,34 @@ writeRaster(g_r, filename = "D:/geodata/project_data/gsp-sas/1km covariates/SSUR
 
 
 load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/gsp_salinity_fetchGDB.RData")
+
+
+# MLRA & STATSGO
+gdalUtils::gdal_translate(
+  src_dataset = "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/mlra_rs.tif", 
+  dst_dataset = "mlra.sdat",
+  ot = "UInt32",
+  of = "SAGA"
+  )
+gdalUtils::gdal_translate(
+  src_dataset = "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO_move/statsgo_mukey.tif", 
+  dst_dataset = "mukey.sdat",
+  ot = "UInt32",
+  of = "SAGA"
+  )
+# compute zonal stats in SAGA (it's fastest)
+zs <- read.table("C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/mukey_mlra_zonal.txt", header = TRUE, sep = "\t")
+zs <- zs[order(zs$mukey, - zs$Count.UCU), ]
+zs <- zs[! duplicated(zs$mukey), ]
+names(zs)[1] <- "ID"
+
+g_r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO_move/statsgo_mukey.tif")
+levels(g_r) <- zs
+raster::deratify(g_r, att = "mlra", 
+                 filename = "D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/statsgo_mlra.tif",
+                 options = c("COMPRESS=DEFLATE"), 
+                 overwrite = TRUE, progress = "text"
+                 )
 
 
 

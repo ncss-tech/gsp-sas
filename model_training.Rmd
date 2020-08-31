@@ -70,6 +70,7 @@ load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compac
 data <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 data <- within(data, {
   ssurgo_pm_lu3_rs_mode_v2 = as.factor(ssurgo_pm_lu3_rs_mode_v2)
+  statsgo_mlra             = as.factor(statsgo_mlra)
   statsgo_pmkind3          = as.factor(statsgo_pmkind3)
   mlra_rs                  = as.factor(mlra_rs)
   nlcd_2016_conus          = as.factor(nlcd_2016_conus)
@@ -214,7 +215,7 @@ vars <- c("ph_ptf.000_030_cm",
           isric_vars, 
           other_vars,
           # remove matching ssurgo derivative
-          ssurgo_vars
+          c("statsgo_mlra", "statsgo_pmkind3")
           )
 train2 <- na.exclude(train[vars])
 
@@ -240,8 +241,8 @@ ph_rf_t50 <- ranger(y = train2$ph_ptf.000_030_cm, x = train2[idx],
 # top 25 variables
 idx <- which(
   names(train2) %in%
-    c(as.character(fs_b_stats$ph_ptf.000_030_cm$variable[1:26]),  
-      "mlra_rs", "ssurgo_pm_lu3_rs_mode_v2")
+    c(as.character(fs_b_stats$ph_ptf.000_030_cm$variable[1:23]),  
+      "statsgo_mlra", "statsgo_pmkind3")
   )
 ph_rf_t25 <- ranger(ph_ptf.000_030_cm ~ ., data = train2[c(1, idx)], 
                     importance = "permutation", quantreg = TRUE, # importance = "impurity",
@@ -285,15 +286,14 @@ vars <- c("ph_ptf.000_030_cm",
           isric_vars, 
           other_vars,
           # remove matching ssurgo derivative
-          c("mlra_rs", "statsgo_pmkind3")
+          c("statsgo_mlra", "statsgo_pmkind3")
           )
 train2 <- na.exclude(train[vars])
 
 idx <- which(names(train2) %in%
                c(as.character(fs_b_stats$ph_ptf.000_030_cm$variable[1:23]),
-                 c("mlra_rs", "statsgo_pmkind3")
+                 c("statsgo_mlra", "statsgo_pmkind3")
                  ))
-                                  
 ph_rf_030_v2 <- train(y = train2$ph_ptf.000_030_cm, x = train2[idx], 
                method = "ranger", quantreg = TRUE, seed = 111,
                importance = "permutation",
@@ -305,13 +305,13 @@ vars <- c("ph_ptf.030_100_cm",
           isric_vars, 
           other_vars,
           # remove matching ssurgo derivative
-          c("mlra_rs", "statsgo_pmkind3_v2")
+          c("statsgo_mlra", "statsgo_pmkind3")
           )
 train2 <- na.exclude(train[vars])
 
 idx <- which(names(train2) %in%
                c(as.character(fs_b_stats$ph_ptf.030_100_cm$variable[1:23]),
-                 c("mlra_rs", "statsgo_pmkind3_v2")
+                 c("statsgo_mlra", "statsgo_pmkind3")
                  ))
  
 ph_rf_100_v2 <- train(y = train2$ph_ptf.030_100_cm, x = train2[idx], 
@@ -320,29 +320,61 @@ ph_rf_100_v2 <- train(y = train2$ph_ptf.030_100_cm, x = train2[idx],
                # na.action = na.exclude,
                trControl = trainControl(method = "cv", number = 10, returnResamp = "all", savePredictions = TRUE, search = "random", verboseIter = FALSE)
                )
+
 print(ph_rf_030_v2)
 print(ph_rf_100_v2)
 
-# save(ph_rf_030, ph_rf_100, ph_rf_030_v2, ph_rf_100_v2, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
+# save(ph_rf_030_v2, ph_rf_100_v2, file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
 
 predfun <- function(model, ...) predict(model, ...)$predictions
 
 idx <- which(
-  names(rs) %in% ph_rf_030$finalModel$forest$independent.variable.names
+  names(rs) %in% ph_rf_030_v2$finalModel$forest$independent.variable.names
   )
 rs2 <- rs[[idx]]
-ph_030_r <- predict(rs2, ph_rf_030$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL_final2.tif")
+ph_030_r <- predict(rs2, ph_rf_030_v2$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL_final4.tif")
 
 
 idx <- which(
-  names(rs) %in% ph_rf_100$finalModel$forest$independent.variable.names
+  names(rs) %in% ph_rf_100_v2$finalModel$forest$independent.variable.names
   )
 rs2 <- rs[[idx]]
-ph_100_r <- predict(rs2, ph_rf_100$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_100_qrf_mlra_pm_NULL_final2.tif")
+ph_100_r <- predict(rs2, ph_rf_100_v2$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_100_qrf_mlra_pm_NULL_final4.tif")
 
 
 ```
 
+
+# Fill gaps and mask
+
+```{r}
+
+library(raster)
+
+ph_030_r <- raster("D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL_final4.tif")
+ph_100_r <- raster("D:geodata/project_data/gsp-sas/ph_100_qrf_mlra_pm_NULL_final4.tif")
+
+ph_030_r0 <- raster("D:geodata/project_data/gsp-sas/1km covariates/SSURGO/ssurgo_ptph30_rs_med_v2.tif")
+ph_100_r0 <- raster("D:geodata/project_data/gsp-sas/1km covariates/SSURGO/ssurgo_ptph100_rs_med_v2.tif")
+
+
+ph_030_r2 <- merge(ph_030_r, ph_030_r0, overlap = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL_final4_fill.tif", progress = "text", overwrite = TRUE)
+ph_100_r2 <- merge(ph_100_r, ph_100_r0, overlap = TRUE, filename = "D:geodata/project_data/gsp-sas/ph_100_qrf_mlra_pm_NULL_final4_fill.tif", progress = "text", overwrite = TRUE)
+
+# mask
+lc <- raster("D:/geodata/project_data/gsp-sas/1km covariates/ISRIC/CONUS_redundant/LCEE10__CONUS.tif")
+m <- c(
+  0,   209, 1, 
+  209, 210, NA,
+  210, 300, 1
+  )
+m <- matrix(m, ncol = 3, byrow = TRUE)
+lc <- reclassify(lc, m, filename = "test.tif", overwrite = TRUE)
+
+mask(ph_030_r2, lc, filename = "D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL_final4_fill_mask.tif", overwrite = TRUE)
+mask(ph_100_r2, lc, filename = "D:geodata/project_data/gsp-sas/ph_100_qrf_mlra_pm_NULL_final4_fill_mask.tif", overwrite = TRUE)
+
+```
 
 
 # Model Uncertainty
