@@ -63,7 +63,7 @@ spplot(rs2["saltaffectedness"])
 #run for both 0-30cm and 30-100cm
 #saltiness
 rs2$saltyclasses <- as.numeric(rs2$saltiness)
-saltiness_LUT100 <- classLUT(rs2["saltiness"], "saltclass") ##WHY WON'T THIS WORK "object 'LUT' not found" 
+saltiness_LUT100 <- classLUT(rs2["saltiness"], "saltclass") ##WHY WON'T THIS WORK "object 'LUT' not found" (because classLUT is for salt affectedness)
 writeGDAL(rs2["saltyclasses"], drivername = "GTiff", "Mid100_saltiness.tif")
 write.table(saltiness_LUT100, file = "saltiness_LUT100.txt", row.names = F)
 
