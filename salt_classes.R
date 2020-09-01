@@ -142,24 +142,40 @@ ESP <- raster(rs2["ESP_100"]) #change variable name to predicted esp layer for e
 names(ESP) <- c("ESP")
 ESP1 <- as(ESP, "SpatialPixelsDataFrame")
 
-#NOT SURE EXACTLY WHAT'S HAPPENING HERE; no ECte, PHt, ESPt objects created in script earlier; they might be new objects but we'll need to edit this#
-ECte <- raster(predictors["ECte"])
-ECsd <- pred_uncerta$pred_sd
+#NOT SURE EXACTLY WHAT'S HAPPENING HERE; no ECte, PHt, ESPt objects created in script earlier; they might be new objects but we'll need to edit this# 
+#NEED UNCERTAINTY MAPS from the predictions
+
+##bring in uncertainty layers and stack them
+unc <- c("ec_100_preduncert.tif", "ut_esp_100_t25_nomlra_prun_width.tif")
+uncst <- stack(unc)
+uncst2 <- as(uncst, "SpatialGridDataFrame")
+names(uncst2) <- c("EC_unc", "ESP_unc")
+
+##or bring in uncertainty layers one at a time
+#ECunc <- c("ec_100_preduncert.tif")
+#ECunc <- raster(ECunc)
+#ECsd <- ECunc
+#names(ECsd) <- c("ECsd")
+
+#If ECte, PHt, ESPt are supposed to be observed values
+#and if ECsd, PHsd, and ESPsd are values from uncertainty maps
+ECte <- raster(soilv["ec_ptf.030_100_cm"])
+ECsd <- uncst2$EC_unc
 names(ECsd) <- c("ECsd")
 
-PHde <- raster(predictors["PHt"])
-PHsd <- pred_uncertb$pred_sd
+PHde <- raster(soilv["ph_ptf.030_100_cm"])
+PHsd <- uncst2$pH_unc
 names(PHsd) <- c("PHsd")
 
-ESPt <- raster(predictors["ESPt"])
-ESPsd <- pred_uncertc$pred_sd 
+ESPt <- raster(soilv["esp.030_100_cm"])
+ESPsd <- uncst2$ESP_unc
 names(ESPsd) <- c("ESPsd")
 
 ##obtain sample spatial autocorrelation
 b <- nrow(EC1)
 c <- trunc(0.01*b)
 jj <- EC1[sample(b,c),]
-vrm <- autofitVariogram(EC~1,jj)
+vrm <- autofitVariogram(EC~1,jj) #cannot deal with non-square cells
 
 #plot correlation info
 plot(vrm)#Note the spatial correlation model and the value of Range parameter
@@ -168,6 +184,7 @@ EC_crm <- makeCRM(acf0 = 0.85, range = 20000, model = "Sph")
 plot(EC_crm, main = "EC correlogram")
 
 ##develop input marginal and joint multivariate uncertainty models for defining MC models
+##takes 2.5+ hours to run each
 EC_UM <- defineUM(distribution = "norm",distr_param = c(ECte,ECsd),crm = EC_crm,id = "EC")
 PH_UM <- defineUM(distribution = "norm",distr_param = c(PHde,PHsd),crm = PH_crm,id = "PH")
 ESP_UM <- defineUM(distribution = "norm",distr_param = c(ESPt,ESPsd),crm = ESP_crm,id = "ESP")
