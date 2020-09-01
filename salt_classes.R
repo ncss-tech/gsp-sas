@@ -175,7 +175,7 @@ names(ESPsd) <- c("ESPsd")
 b <- nrow(EC1)
 c <- trunc(0.01*b)
 jj <- EC1[sample(b,c),]
-vrm <- autofitVariogram(EC~1,jj) #cannot deal with non-square cells
+vrm <- autofitVariogram(EC~1,jj) ### ERROR cannot deal with non-square cells
 
 #plot correlation info
 plot(vrm)#Note the spatial correlation model and the value of Range parameter
