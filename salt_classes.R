@@ -119,14 +119,18 @@ soilv$saltaffectedness <- saltclasses.ovv$saltaffectedness #take predicted value
 summary(soilv$salt_affected)
 summary(soilv$saltaffectedness)
 
+##get rid of NAs
+soilv <- subset(soilv, !is.na(soilv$saltaffectedness1))
+soilv <- subset(soilv, !is.na(soilv$saltaffectedness))
 
 
 ##generate confusion matrix and Kappa
-#####gives error - all arguments must have the same length...but they have the same length so??????
-agreementplot(confusion(soilv$salt_affected, soilv$salt_affected1),
+#####gives error - all arguments must have the same length...but they have the same length so?????? I think its because there's a different max value for prediction map vs predictions at test points. works when done on named fields (saltaffectedness and saltaffectedness1, rather than on numbered fields salt_affected and saltaffected1)
+agreementplot(confusion(soilv$saltaffectedness, soilv$saltaffectedness1),
               main = "Accuracy assessment",xlab = "Class codes in holdout samples",
               ylab = "Class codes in map")
-Kappa(confusion(soilv$salt_affected, soilv$salt_affected1))
+
+Kappa(confusion(soilv$saltaffectedness, soilv$saltaffectedness1))
 
 
 ########################################################################
@@ -149,11 +153,14 @@ ESP1 <- as(ESP, "SpatialPixelsDataFrame")
 #NOT SURE EXACTLY WHAT'S HAPPENING HERE; no ECte, PHt, ESPt objects created in script earlier; they might be new objects but we'll need to edit this# 
 #NEED UNCERTAINTY MAPS from the predictions
 
+setwd("G:/GSP/predictions/acc_unc")
+
 ##bring in uncertainty layers and stack them
-unc <- c("ec_100_preduncert.tif", "ut_esp_100_t25_nomlra_prun_width.tif")
+unc <- c("ec100_uncert_predsd.tif", "ph_100_uncert_predsd.tif", "notr_esp_100_t25_nomlra_prun_sd_nafw.tif")
 uncst <- stack(unc)
 uncst2 <- as(uncst, "SpatialGridDataFrame")
-names(uncst2) <- c("EC_unc", "ESP_unc")
+names(uncst2) <- c("EC_unc", "PH_unc", "ESP_unc")
+uncst2
 
 ##or bring in uncertainty layers one at a time
 #ECunc <- c("ec_100_preduncert.tif")
@@ -161,19 +168,14 @@ names(uncst2) <- c("EC_unc", "ESP_unc")
 #ECsd <- ECunc
 #names(ECsd) <- c("ECsd")
 
-#If ECte, PHt, ESPt are supposed to be observed values
-#and if ECsd, PHsd, and ESPsd are values from uncertainty maps
-ECte <- raster(soilv["ec_ptf.030_100_cm"])
-ECsd <- uncst2$EC_unc
-names(ECsd) <- c("ECsd")
+#If ECte, PHt, ESPt are predicted values and ECsd, PHsd, and ESPsd are uncertainty standard deviations
+ECte=raster(rs2["EC_100"]);ECsd=uncst2["EC_unc"]; names(ECsd)=c("ECsd")
+ECsdr=raster(EC)
 
-PHde <- raster(soilv["ph_ptf.030_100_cm"])
-PHsd <- uncst2$pH_unc
-names(PHsd) <- c("PHsd")
+PHde=raster(rs2["pH_100"]);PHsd=uncst2["PH_unc"]; names(PHsd)=c("PHsd")
 
-ESPt <- raster(soilv["esp.030_100_cm"])
-ESPsd <- uncst2$ESP_unc
-names(ESPsd) <- c("ESPsd")
+ESPt=raster(rs2["ESP_100"]);ESPsd=uncst2["ESP_unc"]; names(ESPsd)=c("ESPsd")
+
 
 ##obtain sample spatial autocorrelation
 b <- nrow(EC1)
@@ -188,7 +190,7 @@ EC_crm <- makeCRM(acf0 = 0.85, range = 20000, model = "Sph")
 plot(EC_crm, main = "EC correlogram")
 
 ##develop input marginal and joint multivariate uncertainty models for defining MC models
-##takes 2.5+ hours to run each
+##ERROR Distribution parameters must be objects of the same class (change ECte to SpatialGridDataFrame?)
 EC_UM <- defineUM(distribution = "norm",distr_param = c(ECte,ECsd),crm = EC_crm,id = "EC")
 PH_UM <- defineUM(distribution = "norm",distr_param = c(PHde,PHsd),crm = PH_crm,id = "PH")
 ESP_UM <- defineUM(distribution = "norm",distr_param = c(ESPt,ESPsd),crm = ESP_crm,id = "ESP")
