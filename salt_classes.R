@@ -35,7 +35,8 @@ f <- c("ec_100_bt_nomlra_wstatspm.tif", "cv_esp_100_nomlra_statspm.tif", "ph_100
 #f <- c("ec_030_bt_nomlra_wstatspm.tif", "cv_esp_030_nomlra_statspm.tif", "ph_030_qrf_mlra_pm_NULL_final2.tif") #change file names as needed
 rs <- stack(f)
 
-rs
+rs #inspect range in values
+
 ###back transform ec and esp if needed###
 
 ##rs$ec_t <- calc(rs$ec_030_t, function(x) exp(x) - 0.1) 
@@ -60,20 +61,19 @@ plot(rs2$saltaffectedness)
 spplot(rs2["saltaffectedness"])
 
 ♥###export salt class maps###
+
 #run for both 0-30cm and 30-100cm
-#saltiness
-rs2$saltyclasses <- as.numeric(rs2$saltiness)
-saltiness_LUT100 <- classLUT(rs2["saltiness"], "saltclass") ##WHY WON'T THIS WORK "object 'LUT' not found" (because classLUT is for salt affectedness)
-writeGDAL(rs2["saltyclasses"], drivername = "GTiff", "Mid100_saltiness.tif")
-write.table(saltiness_LUT100, file = "saltiness_LUT100.txt", row.names = F)
+#saltiness (not required)
+#rs2$saltyclasses <- as.numeric(rs2$saltiness)
+#saltiness_LUT100 <- classLUT(rs2["saltiness"], "saltclass") ##WHY WON'T THIS WORK "object 'LUT' not found" (because classLUT() is for salt affectedness)
+#writeGDAL(rs2["saltyclasses"], drivername = "GTiff", "Mid100_saltiness.tif")
+#write.table(saltiness_LUT100, file = "saltiness_LUT100.txt", row.names = F)
 
 #run for both 0-30cm and 30-100cm 
 rs2$saltclasses <- as.numeric(rs2$saltaffectedness) #convert factors to numeric
 salinity_LUT100 <- classLUT(rs2["saltaffectedness"], "saltseverity") #change object name for depth as needed
 writeGDAL(rs2["saltclasses"], drivername = "GTiff", "Mid100_saltaffected.tif")
 write.table(salinity_LUT100, file = "saltaffected_LUT100.txt", row.names = F)
-
-###do we need to also export saltiness?????###
 
 
 ########################################################################
@@ -84,6 +84,7 @@ setwd("G:/GSP/pointdata")
 getwd()
 
 #soilv <- readOGR("filepath", "validation dataset") #change file path and validation dataset name 
+
 #load training_data.RData
 
 load(file = "LDM-compact_20200709.RData")
@@ -91,7 +92,10 @@ load(file = "LDM-compact_20200709.RData")
 
 soilv <- test
 
-soilv$saltaffected1 <- saltSeverity(soilv$ec_ptf.030_100_cm, soilv$ph_ptf.030_100_cm, soilv$esp.030_100_cm, "FAO") 
+soilv <- soilv[c(1,10:18)] #get rid of covariate columns
+
+#### predict salt classes for each test point
+soilv$saltaffected1 <- saltSeverity(soilv$ec_ptf.030_100_cm, soilv$ph_ptf.030_100_cm, soilv$esp.030_100_cm, "FAO") #change for each depth
 summary(soilv$saltaffected1)
 
 soilv$saltaffectedness1 <- classCode(soilv$saltaffected1, "saltseverity")
@@ -105,7 +109,7 @@ test2 <- cbind(s_mps_sf["pedon_key"], sf::st_coordinates(s_mps_sf)) #extract coo
 soilv <- merge(x = test2, y = soilv, by = "pedon_key", all.y = TRUE) #merge coordinates with test data
 summary(soilv)
 
-rs2.ov <- over(as(soilv, "Spatial"), rs2) #combine predictions with test data
+rs2.ov <- over(as(soilv, "Spatial"), rs2) #combine predictions with test data ####I DON'T KNOW IF THIS IS DOING ANYTHING.Nothing from soilv shows up with summary(rs2.ov) 
 
 saltclasses.ovv <- rs2.ov
 
