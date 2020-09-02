@@ -480,8 +480,28 @@ ph_pred_uncert <- predUncertain(data2, rs2, 3, 95, "ranger")
 ```{r}
 
 # SSURGO vs KSSL at 1000-meters
-caret::R2(data$ph_000030, data$ph_saturated_paste.000_030_cm, na.rm = TRUE)
-caret::R2(data$ec_000_030_cm, data$gnatsgo_ec_000030, na.rm = TRUE)
+library(raster)
+library(sf)
+
+fn <- c("ssurgo_ptph30_rs_med_v2.tif", "ssurgo_ptph100_rs_med_v2.tif")
+rs <- stack(file.path("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO", fn))
+
+ex <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
+
+stratia_f <- function(measure, predict) {
+  data.frame(
+    Bias     =      mean( predict - measure,    na.rm = TRUE),
+    RMSE     = sqrt(mean((predict - measure)^2, na.rm = TRUE)),
+    Rsquared =      cor(  predict,  measure, use = "complete.obs")^2,
+    NSE      = 1 -  sum(  predict - measure, na.rm = TRUE)^2 /
+      sum((predict - mean(measure, na.rm = TRUE))^2, na.rm = TRUE)
+  )}
+
+ph_030_stratia <- stratia_f(ex$ph_wa.0.30, ex$ssurgo_ptph30_rs_med_v2)
+ph_100_stratia <- stratia_f(ex$ph_wa.30.100, ex$ssurgo_ptph100_rs_med_v2)
+
+knitr::kable(round(ph_030_stratia, 2), caption = "gNATSGO pH 0-30cm")
+knitr::kable(round(ph_100_stratia, 2), caption = "gNATSGO pH 30-100cm")
 
 ```
 

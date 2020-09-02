@@ -4,34 +4,22 @@
 ##############################################################################
 ###session
 
-#check/load packages
-
-required.packages <- c('sp','rgdal','raster','snow','snowfall','parallel','tidyr','car','carData','dplyr','spacetime','gstat','automap','randomForest','fitdistrplus','e1071','caret','
-          soilassessment','soiltexture','GSIF','aqp','plyr','Hmisc','corrplot','factoextra','spup','purrr','lattice','ncf','npsurv','lsei',
-                       'qrnn','nnet','mda','RColorBrewer','vcd','readxls','maptools','neuralnet','psych', 'fmsb','doParallel')
-
-new.packages <- required.packages[!(required.packages %in% installed.packages()[,"Package"])]
-if(length(new.packages)) install.packages(new.packages)
-lapply(required.packages, require, character.only=T)
-rm(required.packages, new.packages)
-## Increase active memory useable by raster package: Windows only
-# memory.limit(500000)
-## Raster settings: adjust based on system
-rasterOptions(maxmemory = 1e+09, chunksize = 1e+08, memfrac = 0.9)
-
-library(soilassessment)
-
 
 #############################################################################
 ##this section of code starts on p86 in the GSSmap_Technical_manual_3.pdf##
 
 ###predict salt classes###
 
-setwd("G:/GSP/predictions/predictions")
+# setwd("G:/GSP/predictions/predictions")
+setwd("D:/geodata/project_data/gsp-sas/predictions")
 
-###Read in prediction layers###
+### Read in prediction layers###
+library(raster)
 
-f <- c("ec_100_bt_nomlra_wstatspm.tif", "cv_esp_100_nomlra_statspm.tif", "ph_100_qrf_mlra_pm_NULL_final2.tif") #change file names as needed
+f <- c("ec100_final_fill_mask.tif", 
+       "notr_esp_100_t25_nomlra_nafw.tif", 
+       "ph_100_qrf_mlra_pm_NULL_final4_fill_mask.tif"
+       ) #change file names as needed
 #f <- c("ec_030_bt_nomlra_wstatspm.tif", "cv_esp_030_nomlra_statspm.tif", "ph_030_qrf_mlra_pm_NULL_final2.tif") #change file names as needed
 rs <- stack(f)
 
@@ -39,28 +27,37 @@ rs #inspect range in values
 
 ###back transform ec and esp if needed###
 
+# do we still need to do this?
 ##rs$ec_t <- calc(rs$ec_030_t, function(x) exp(x) - 0.1) 
-rs$esp_t <- calc(rs$cv_esp_100_nomlra_statspm, function(x) exp(x) - 0.1)
-rs #check which columns to keep in next line
-rs <- rs[[c(1,3:4)]] #only use back-transformed data
+# rs$esp_t <- calc(rs$cv_esp_100_nomlra_statspm, function(x) exp(x) - 0.1) 
+# rs #check which columns to keep in next line
+# rs <- rs[[c(1,3:4)]] #only use back-transformed data
 rs2 <- as(rs, "SpatialGridDataFrame")
-names(rs2) <- c("EC_100", "pH_100", "ESP_100")
+names(rs2) <- c("EC_100", "ESP_100", "pH_100")
 
 
-##run saltiness and salt severity for both 0-30cm and 30-100cm
-#saltiness
+
+## run saltiness and salt severity for both 0-30cm and 30-100cm
+
+# saltiness
+library(soilassessment)
+
 rs2$salty <- saltClass(rs2$EC_100, rs2$pH_100, rs2$ESP_100,"FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
 rs2$saltiness <- classCode(rs2$salty, "saltclass") #add class names
 plot(rs2$saltiness)
-spplot(rs2["saltiness"])
+plot(rs2["saltiness"])
 
-#salt severity
+
+
+# salt severity
 rs2$salt_affected <- saltSeverity(rs2$EC_100, rs2$pH_100, rs2$ESP_100, "FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
 rs2$saltaffectedness <- classCode(rs2$salt_affected, "saltseverity") #add class names
-plot(rs2$saltaffectedness)
-spplot(rs2["saltaffectedness"])
+barplot(table(rs2$saltaffectedness))
+plot(rs2["saltaffectedness"], col = RColorBrewer::brewer.pal(11, "Spectral"))
 
-♥###export salt class maps###
+
+
+### export salt class maps###
 
 #run for both 0-30cm and 30-100cm
 #saltiness (not required)
@@ -72,7 +69,7 @@ spplot(rs2["saltaffectedness"])
 #run for both 0-30cm and 30-100cm 
 rs2$saltclasses <- as.numeric(rs2$saltaffectedness) #convert factors to numeric
 salinity_LUT100 <- classLUT(rs2["saltaffectedness"], "saltseverity") #change object name for depth as needed
-writeGDAL(rs2["saltclasses"], drivername = "GTiff", "Mid100_saltaffected.tif")
+rgdal::writeGDAL(rs2["saltclasses"], drivername = "GTiff", "Mid100_saltaffected.tif")
 write.table(salinity_LUT100, file = "saltaffected_LUT100.txt", row.names = F)
 
 
@@ -87,7 +84,7 @@ getwd()
 
 #load training_data.RData
 
-load(file = "LDM-compact_20200709.RData")
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
 #also load training data into environment, test is test points
 
 soilv <- test
@@ -95,7 +92,11 @@ soilv <- test
 soilv <- soilv[c(1,10:18)] #get rid of covariate columns
 
 #### predict salt classes for each test point
-soilv$saltaffected1 <- saltSeverity(soilv$ec_ptf.030_100_cm, soilv$ph_ptf.030_100_cm, soilv$esp.030_100_cm, "FAO") #change for each depth
+soilv$saltaffected1 <- saltSeverity(ec  = soilv$ec_ptf.030_100_cm, 
+                                    ph  = soilv$ph_ptf.030_100_cm, 
+                                    ESP = soilv$esp.030_100_cm, 
+                                    "FAO"
+                                    ) #change for each depth
 summary(soilv$saltaffected1)
 
 soilv$saltaffectedness1 <- classCode(soilv$saltaffected1, "saltseverity")
@@ -113,7 +114,7 @@ rs2.ov <- over(as(soilv, "Spatial"), rs2) #combine predictions with test data ##
 
 saltclasses.ovv <- rs2.ov
 
-soilv$salt_affected <- saltclasses.ovv$salt_affected #take predicted value for salt affected and add to the validataion points
+soilv$salt_affected    <- saltclasses.ovv$salt_affected #take predicted value for salt affected and add to the validataion points
 soilv$saltaffectedness <- saltclasses.ovv$saltaffectedness #take predicted value for saltaffectedness and add to the validation points
 #check summary of extracted classified pixels
 summary(soilv$salt_affected)
@@ -126,11 +127,18 @@ soilv <- subset(soilv, !is.na(soilv$saltaffectedness))
 
 ##generate confusion matrix and Kappa
 #####gives error - all arguments must have the same length...but they have the same length so?????? I think its because there's a different max value for prediction map vs predictions at test points. works when done on named fields (saltaffectedness and saltaffectedness1, rather than on numbered fields salt_affected and saltaffected1)
-agreementplot(confusion(soilv$saltaffectedness, soilv$saltaffectedness1),
+library(vcd); library(mda)
+
+lv <- c(3, 6, 8:17)
+soilv <- transform(soilv,
+                   sa  = factor(salt_affected, levels = lv),
+                   sa1 = factor(saltaffected1, levels = lv)
+                   )
+agreementplot(table(soilv$sa, soilv$sa1),
               main = "Accuracy assessment",xlab = "Class codes in holdout samples",
               ylab = "Class codes in map")
 
-Kappa(confusion(soilv$saltaffectedness, soilv$saltaffectedness1))
+Kappa(table(soilv$saltaffectedness, soilv$saltaffectedness1))
 
 
 ########################################################################
@@ -153,7 +161,7 @@ ESP1 <- as(ESP, "SpatialPixelsDataFrame")
 #NOT SURE EXACTLY WHAT'S HAPPENING HERE; no ECte, PHt, ESPt objects created in script earlier; they might be new objects but we'll need to edit this# 
 #NEED UNCERTAINTY MAPS from the predictions
 
-setwd("G:/GSP/predictions/acc_unc")
+setwd("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert")
 
 ##bring in uncertainty layers and stack them
 unc <- c("ec100_uncert_predsd.tif", "ph_100_uncert_predsd.tif", "notr_esp_100_t25_nomlra_prun_sd_nafw.tif")
@@ -169,8 +177,10 @@ uncst2
 #names(ECsd) <- c("ECsd")
 
 #If ECte, PHt, ESPt are predicted values and ECsd, PHsd, and ESPsd are uncertainty standard deviations
-ECte=raster(rs2["EC_100"]);ECsd=uncst2["EC_unc"]; names(ECsd)=c("ECsd")
-ECsdr=raster(EC)
+ECte <- raster(rs2["EC_100"]);
+ECsd <- uncst2["EC_unc"]; 
+names(ECsd) <-"ECsd"
+ECsdr <- raster(EC)
 
 PHde=raster(rs2["pH_100"]);PHsd=uncst2["PH_unc"]; names(PHsd)=c("PHsd")
 
@@ -178,22 +188,39 @@ ESPt=raster(rs2["ESP_100"]);ESPsd=uncst2["ESP_unc"]; names(ESPsd)=c("ESPsd")
 
 
 ##obtain sample spatial autocorrelation
+library(automap)
+
+EC1 <- spTransform(EC1, CRS = CRS("+init=epsg:5070"))
 b <- nrow(EC1)
-c <- trunc(0.01*b)
-jj <- EC1[sample(b,c),]
-vrm <- autofitVariogram(EC~1,jj) ### ERROR cannot deal with non-square cells
+c <- trunc(0.005 * b)
+jj <- EC1[sample(b, c), ]
+vrm <- autofitVariogram(EC ~ 1, jj) ### ERROR cannot deal with non-square cells
 
 #plot correlation info
+library(spup)
+
 plot(vrm)#Note the spatial correlation model and the value of Range parameter
 acf((EC1$EC)) ##Also note the acf0 (at lag 0)
-EC_crm <- makeCRM(acf0 = 0.85, range = 20000, model = "Sph")
+EC_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph")
 plot(EC_crm, main = "EC correlogram")
 
 ##develop input marginal and joint multivariate uncertainty models for defining MC models
 ##ERROR Distribution parameters must be objects of the same class (change ECte to SpatialGridDataFrame?)
-EC_UM <- defineUM(distribution = "norm",distr_param = c(ECte,ECsd),crm = EC_crm,id = "EC")
-PH_UM <- defineUM(distribution = "norm",distr_param = c(PHde,PHsd),crm = PH_crm,id = "PH")
-ESP_UM <- defineUM(distribution = "norm",distr_param = c(ESPt,ESPsd),crm = ESP_crm,id = "ESP")
+EC_UM <- defineUM(distribution = "norm", 
+                  distr_param  = c(as(ECte, "SpatialGridDataFrame"), ECsd), 
+                  crm          = EC_crm, 
+                  id           = "EC"
+                  )
+PH_UM <- defineUM(distribution = "norm",
+                  distr_param = c(PHde,PHsd),
+                  crm         = PH_crm,
+                  id = "PH"
+                  )
+ESP_UM <- defineUM(distribution = "norm",
+                   distr_param  = c(ESPt,ESPsd),
+                   crm          = ESP_crm,
+                   id           = "ESP"
+                   )
 class(EC_UM)
 class(PH_UM)
 class(ESP_UM)
