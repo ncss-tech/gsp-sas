@@ -26,8 +26,8 @@ library(soilassessment)
 
 ###predict salt classes###
 
-setwd("G:/GSP/predictions/predictions")
-# setwd("D:/geodata/project_data/gsp-sas/predictions")
+# setwd("G:/GSP/predictions/predictions")
+setwd("D:/geodata/project_data/gsp-sas/predictions")
 
 ### Read in prediction layers###
 library(raster)
@@ -40,7 +40,9 @@ f <- c(PH_030 = "ph_030_qrf_mlra_pm_NULL_final4_fill_mask.tif",
        ESP_100 = "notr_esp_100_t25_nomlra_nafw.tif" 
        ) #change file names as needed
 #f <- c("ec_030_bt_nomlra_wstatspm.tif", "cv_esp_030_nomlra_statspm.tif", "ph_030_qrf_mlra_pm_NULL_final2.tif") #change file names as needed
-rs <- stack(f)
+rs <- readAll(stack(f))
+rs <- projectRaster(rs, crs = "+init=epsg:5070", progress = "text")
+
 
 rs #inspect range in values
 
@@ -100,7 +102,7 @@ spplot(rs_100["saltaffectedness"])
 rs_030$saltclasses <- as.numeric(rs_030$saltaffectedness) #convert factors to numeric
 salinity_LUT30 <- classLUT(rs_030["saltaffectedness"], "saltseverity") #change object name for depth as needed
 rgdal::writeGDAL(rs_030["saltclasses"], drivername = "GTiff", "Top030_saltaffected.tif")
-write.table(salinity_LUT30, file = "saltaffected_LUT30.txt", row.names = F)
+write.table(salinity_LUT30, file = "saltaffected_LUT30.txt", row.names = FALSE)
 
 rs_100$saltclasses <- as.numeric(rs_100$saltaffectedness) #convert factors to numeric
 salinity_LUT100 <- classLUT(rs_100["saltaffectedness"], "saltseverity") #change object name for depth as needed
@@ -112,11 +114,13 @@ write.table(salinity_LUT100, file = "saltaffected_LUT100.txt", row.names = F)
 ##import and classify validation points for salt classes; these are OBSERVED values
 setwd("G:/GSP/pointdata")
 getwd()
+setwd("C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas")
 
 #soilv <- readOGR("filepath", "validation dataset") #change file path and validation dataset name 
 
 #load training_data.RData
 
+load(file = "training_data.RData")
 load(file = "LDM-compact_20200709.RData")
 #also load training data into environment, test is test points
 
@@ -141,6 +145,7 @@ summary(soilv$saltaffectedness1)
 soilv <- subset(soilv, !is.na(soilv$saltaffectedness1)) #trim test points down to only ones with relevant data
 summary(soilv)
 
+s_mps_sf <- st_transform(s_mps_sf, crs = "+init=epsg:5070")
 test2 <- cbind(s_mps_sf["pedon_key"], sf::st_coordinates(s_mps_sf)) #extract coordinates from lab data
 soilv <- merge(x = test2, y = soilv, by = "pedon_key", all.y = TRUE) #merge coordinates with test data
 summary(soilv)
@@ -160,10 +165,7 @@ summary(soilv$saltaffected1)
 summary(soilv$saltaffectedness1)
 
 ##get rid of NAs
-soilv <- subset(soilv, !is.na(soilv$saltaffectedness1))
-soilv <- subset(soilv, !is.na(soilv$saltaffectedness))
-soilv <- subset(soilv, !is.na(soilv$salt_affected))
-soilv <- subset(soilv, !is.na(soilv$saltaffected1))
+soilv <- subset(soilv, complete.cases(saltaffectedness1, saltaffectedness, salt_affected, saltaffected1))
 
 ##generate confusion matrix and Kappa
 #####gives error - all arguments must have the same length...but they have the same length so?????? I think its because there's a different max value for prediction map vs predictions at test points. works when done on named fields (saltaffectedness and saltaffectedness1, rather than on numbered fields salt_affected and saltaffected1)
@@ -178,7 +180,7 @@ agreementplot(table(soilv$sa, soilv$sa1),
               main = "Accuracy assessment",xlab = "Class codes in holdout samples",
               ylab = "Class codes in map")
 
-Kappa(confusion(soilv$salt_affected, soilv$saltaffected1))
+Kappa(table(soilv$sa, soilv$sa1))
 
 
 ########################################################################
@@ -203,13 +205,16 @@ EC1 <- as(EC_030, "SpatialPixelsDataFrame")
 # #NOT SURE EXACTLY WHAT'S HAPPENING HERE; no ECte, PHt, ESPt objects created in script earlier; they might be new objects but we'll need to edit this# 
 # #NEED UNCERTAINTY MAPS from the predictions
 
-setwd("G:/GSP/predictions/acc_unc")
+# setwd("G:/GSP/predictions/acc_unc")
+setwd("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert")
 
 ##bring in uncertainty layers and stack them
-unc <- c("ec030_predsd.tif", "ph_030_uncert_predsd.tif", "notr_esp_030_t25_nomlra_prun_sd_nafw.tif")
-uncst <- stack(unc)
+unc <- c(EC_unc  = "ec030_predsd.tif", 
+         PH_unc  = "ph_030_uncert_predsd.tif", 
+         ESP_unc = "notr_esp_030_t25_nomlra_prun_sd_nafw.tif"
+         )
+uncst <- projectRaster(readAll(stack(unc)), crs = "+init=epsg:5070", progress = "text")
 uncst2 <- as(uncst, "SpatialGridDataFrame")
-names(uncst2) <- c("EC_unc", "PH_unc", "ESP_unc")
 uncst2
 
 
@@ -232,19 +237,19 @@ names(ESPsd)=c("ESPsd")
 ###############
 library(automap)
 
-ec_030_sp <- spTransform(rs_030["EC_030"], CRS = CRS("+init=epsg:5070")) #change to square pixels?
+ec_030_sp <- as(rs_030["EC_030"], "SpatialPointsDataFrame") #change to square pixels?
 b1 <- nrow(ec_030_sp)
 c1 <- trunc(0.01 * b1)
 jj1 <- ec_030_sp[sample(b1, c1), ]
 ec_030_vrm <- autofitVariogram(EC_030 ~ 1, jj1) ### ERROR cannot deal with non-square cells
 
-ph_030_sp <- spTransform(rs_030["PH_030"], CRS = CRS("+init=epsg:5070"))
+ph_030_sp <- as(rs_030["PH_030"], "SpatialPointsDataFrame")
 b2 <- nrow(ph_030_sp)
-c2 <- trunc(0.01 *b2)
+c2 <- trunc(0.01 * b2)
 jj2 <- ph_030_sp[sample(b2, c2), ]
 ph_030_vrm <- autofitVariogram(PH_030 ~ 1, jj2)
 
-esp_030_sp <- spTransform(rs_030["ESP_030"], CRS = CRS("+init=epsg:5070"))
+esp_030_sp <- as(rs_030["ESP_030"], "SpatialPointsDataFrame")
 b3 <- nrow(esp_030_sp)
 c3 <- trunc(0.01 *b3)
 jj3 <- esp_030_sp[sample(b3, c3), ]
@@ -255,7 +260,7 @@ library(spup)
 
 plot(ec_030_vrm) # Note the spatial correlation model and the value of Range parameter
 acf(ec_030_sp$EC_030) ##Also note the acf0 (at lag 0)
-ec_030_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph") #change acf0 to 0.85 to match manual??
+ec_030_crm <- makeCRM(acf0 = 1, range = 250000, model = "Sph") #change acf0 to 0.85 to match manual??
 plot(ec_030_crm, main = "EC 30cm correlogram")
 
 plot(ph_030_vrm)
@@ -265,7 +270,7 @@ plot(ph_030_crm, main = "PH 30cm correlogram")
 
 plot(esp_030_vrm)
 acf(esp_030_sp$ESP_030)
-esp_030_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph")
+esp_030_crm <- makeCRM(acf0 = 1, range = 150000, model = "Sph")
 plot(esp_030_crm, main = "ESP 30cm correlogram")
 
 ###################
