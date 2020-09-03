@@ -640,8 +640,51 @@ writeRaster(ph_pred_un100,"K:/GSP/modeling/predict/ph/ph_100_predun.tif", overwr
 library(raster)
 library(sf)
 
+###EC###
+fn <- c("ssurgo_ptec30_rs_med.tif", "ssurgo_ptec100_rs_med.tif")
+rs <- stack(file.path("K:/GSP/modeling/covariates/excluded/ssurgo", fn))
+ex <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
+
+stratia_f <- function(measure, predict) {
+  data.frame(
+    Bias     =      mean( predict - measure,    na.rm = TRUE),
+    RMSE     = sqrt(mean((predict - measure)^2, na.rm = TRUE)),
+    Rsquared =      cor(  predict,  measure, use = "complete.obs")^2,
+    NSE      = 1 -  sum(  predict - measure, na.rm = TRUE)^2 /
+      sum((predict - mean(measure, na.rm = TRUE))^2, na.rm = TRUE)
+  )}
+
+ec_030_stratia <- stratia_f(ex$ec_wa.0.30, ex$ssurgo_ptec30_rs_med)
+ec_100_stratia <- stratia_f(ex$ec_wa.30.100, ex$ssurgo_ptec100_rs_med)
+
+knitr::kable(round(ec_030_stratia, 2), caption = "gNATSGO EC 0-30cm")
+knitr::kable(round(ec_100_stratia, 2), caption = "gNATSGO EC 30-100cm")
+
+
+###SAR###
+fn <- c("ssurgo_ptsar30_rs_med.tif", "ssurgo_ptsar100_rs_med.tif")
+rs <- stack(file.path("K:/GSP/modeling/covariates/excluded/ssurgo", fn))
+ex <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
+
+stratia_f <- function(measure, predict) {
+  data.frame(
+    Bias     =      mean( predict - measure,    na.rm = TRUE),
+    RMSE     = sqrt(mean((predict - measure)^2, na.rm = TRUE)),
+    Rsquared =      cor(  predict,  measure, use = "complete.obs")^2,
+    NSE      = 1 -  sum(  predict - measure, na.rm = TRUE)^2 /
+      sum((predict - mean(measure, na.rm = TRUE))^2, na.rm = TRUE)
+  )}
+
+sar_030_stratia <- stratia_f(ex$sar_wa.0.30, ex$ssurgo_ptsar30_rs_med)
+sar_100_stratia <- stratia_f(ex$sar_wa.30.100, ex$ssurgo_ptsar100_rs_med)
+
+knitr::kable(round(sar_030_stratia, 2), caption = "gNATSGO SAR 0-30cm")
+knitr::kable(round(sar_100_stratia, 2), caption = "gNATSGO SAR 30-100cm")
+
+
+###SAR###
 fn <- c("ssurgo_ptph30_rs_med_v2.tif", "ssurgo_ptph100_rs_med_v2.tif")
-rs <- stack(file.path("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO", fn))
+rs <- stack(file.path("K:/GSP/modeling/covariates/ssurgo", fn))
 ex <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 
 stratia_f <- function(measure, predict) {
@@ -656,8 +699,7 @@ stratia_f <- function(measure, predict) {
 ph_030_stratia <- stratia_f(ex$ph_wa.0.30, ex$ssurgo_ptph30_rs_med_v2)
 ph_100_stratia <- stratia_f(ex$ph_wa.30.100, ex$ssurgo_ptph100_rs_med_v2)
 
-knitr::kable(round(ph_030_stratia, 2), caption = "gNATSGO pH 0-30cm")
-knitr::kable(round(ph_100_stratia, 2), caption = "gNATSGO pH 30-100cm")
-
+knitr::kable(round(ph_030_stratia, 2), caption = "gNATSGO PH 0-30cm")
+knitr::kable(round(ph_100_stratia, 2), caption = "gNATSGO PH 30-100cm")
 ```
 
