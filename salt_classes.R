@@ -16,9 +16,12 @@ setwd("D:/geodata/project_data/gsp-sas/predictions")
 ### Read in prediction layers###
 library(raster)
 
-f <- c("ec100_final_fill_mask.tif", 
-       "notr_esp_100_t25_nomlra_nafw.tif", 
-       "ph_100_qrf_mlra_pm_NULL_final4_fill_mask.tif"
+f <- c(PH_030 = "ph_030_qrf_mlra_pm_NULL_final4_fill_mask.tif",
+       EC_030 = "ec030_final_fill_mask.tif", 
+       ESP_030 = "notr_esp_030_t25_nomlra_nafw.tif",
+       PH_100 = "ph_100_qrf_mlra_pm_NULL_final4_fill_mask.tif",
+       EC_100 = "ec100_final_fill_mask.tif",
+       ESP_100 = "notr_esp_100_t25_nomlra_nafw.tif" 
        ) #change file names as needed
 #f <- c("ec_030_bt_nomlra_wstatspm.tif", "cv_esp_030_nomlra_statspm.tif", "ph_030_qrf_mlra_pm_NULL_final2.tif") #change file names as needed
 rs <- stack(f)
@@ -32,8 +35,8 @@ rs #inspect range in values
 # rs$esp_t <- calc(rs$cv_esp_100_nomlra_statspm, function(x) exp(x) - 0.1) 
 # rs #check which columns to keep in next line
 # rs <- rs[[c(1,3:4)]] #only use back-transformed data
-rs2 <- as(rs, "SpatialGridDataFrame")
-names(rs2) <- c("EC_100", "ESP_100", "pH_100")
+rs_030 <- as(rs[[1:3]], "SpatialGridDataFrame")
+rs_100 <- as(rs[[4:6]], "SpatialGridDataFrame")
 
 
 
@@ -42,18 +45,18 @@ names(rs2) <- c("EC_100", "ESP_100", "pH_100")
 # saltiness
 library(soilassessment)
 
-rs2$salty <- saltClass(rs2$EC_100, rs2$pH_100, rs2$ESP_100,"FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
-rs2$saltiness <- classCode(rs2$salty, "saltclass") #add class names
-plot(rs2$saltiness)
-plot(rs2["saltiness"])
+rs_030$salty <- saltClass(rs_030$EC_100, rs_030$pH_100, rs_030$ESP_100,"FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
+rs_030$saltiness <- classCode(rs_030$salty, "saltclass") #add class names
+plot(rs_030$saltiness)
+plot(rs_030["saltiness"])
 
 
 
 # salt severity
-rs2$salt_affected <- saltSeverity(rs2$EC_100, rs2$pH_100, rs2$ESP_100, "FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
-rs2$saltaffectedness <- classCode(rs2$salt_affected, "saltseverity") #add class names
-barplot(table(rs2$saltaffectedness))
-plot(rs2["saltaffectedness"], col = RColorBrewer::brewer.pal(11, "Spectral"))
+rs_030$salt_affected <- saltSeverity(rs_030$EC_100, rs_030$pH_100, rs_030$ESP_100, "FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
+rs_030$saltaffectedness <- classCode(rs_030$salt_affected, "saltseverity") #add class names
+barplot(table(rs_030$saltaffectedness))
+plot(rs_030["saltaffectedness"], col = RColorBrewer::brewer.pal(11, "Spectral"))
 
 
 
@@ -67,9 +70,9 @@ plot(rs2["saltaffectedness"], col = RColorBrewer::brewer.pal(11, "Spectral"))
 #write.table(saltiness_LUT100, file = "saltiness_LUT100.txt", row.names = F)
 
 #run for both 0-30cm and 30-100cm 
-rs2$saltclasses <- as.numeric(rs2$saltaffectedness) #convert factors to numeric
-salinity_LUT100 <- classLUT(rs2["saltaffectedness"], "saltseverity") #change object name for depth as needed
-rgdal::writeGDAL(rs2["saltclasses"], drivername = "GTiff", "Mid100_saltaffected.tif")
+rs_030$saltclasses <- as.numeric(rs_030$saltaffectedness) #convert factors to numeric
+salinity_LUT100 <- classLUT(rs_030["saltaffectedness"], "saltseverity") #change object name for depth as needed
+rgdal::writeGDAL(rs_030["saltclasses"], drivername = "GTiff", "Mid100_saltaffected.tif")
 write.table(salinity_LUT100, file = "saltaffected_LUT100.txt", row.names = F)
 
 
@@ -110,9 +113,9 @@ test2 <- cbind(s_mps_sf["pedon_key"], sf::st_coordinates(s_mps_sf)) #extract coo
 soilv <- merge(x = test2, y = soilv, by = "pedon_key", all.y = TRUE) #merge coordinates with test data
 summary(soilv)
 
-rs2.ov <- over(as(soilv, "Spatial"), rs2) #combine predictions with test data ####I DON'T KNOW IF THIS IS DOING ANYTHING.Nothing from soilv shows up with summary(rs2.ov) 
+rs_030.ov <- over(as(soilv, "Spatial"), rs_030) #combine predictions with test data ####I DON'T KNOW IF THIS IS DOING ANYTHING.Nothing from soilv shows up with summary(rs2.ov) 
 
-saltclasses.ovv <- rs2.ov
+saltclasses.ovv <- rs_030.ov
 
 soilv$salt_affected    <- saltclasses.ovv$salt_affected #take predicted value for salt affected and add to the validataion points
 soilv$saltaffectedness <- saltclasses.ovv$saltaffectedness #take predicted value for saltaffectedness and add to the validation points
@@ -144,22 +147,23 @@ Kappa(table(soilv$saltaffectedness, soilv$saltaffectedness1))
 ########################################################################
 ###uncertainty of salt class maps with monte-carlo simulations; p90###
 
-##convert input layers to raster files (ours may already be raster objects?)
-
-EC <- raster(rs2["EC_100"]) #change variable name to predicted ec layer for each depth
-names(EC) <- c("EC")
-EC1 <- as(EC, "SpatialPixelsDataFrame") 
-
-PH <- raster(rs2["pH_100"]) #change variable name to predicted ph layer for each depth
-names(PH) <- c("PH")
-PH1 <- as(PH, "SpatialPixelsDataFrame")
-
-ESP <- raster(rs2["ESP_100"]) #change variable name to predicted esp layer for each depth
-names(ESP) <- c("ESP")
-ESP1 <- as(ESP, "SpatialPixelsDataFrame")
-
-#NOT SURE EXACTLY WHAT'S HAPPENING HERE; no ECte, PHt, ESPt objects created in script earlier; they might be new objects but we'll need to edit this# 
-#NEED UNCERTAINTY MAPS from the predictions
+# ##convert input layers to raster files (ours may already be raster objects?)
+# library(sp)
+# 
+# EC_030 <- raster(rs_030["EC_030"]) #change variable name to predicted ec layer for each depth
+# EC_030_spdf <- as(EC_030, "SpatialPixelsDataFrame") 
+# names(EC_030_spdf) <- c("EC")
+# 
+# PH <- raster(rs2["pH_100"]) #change variable name to predicted ph layer for each depth
+# names(PH) <- c("PH")
+# PH1 <- as(PH, "SpatialPixelsDataFrame")
+# 
+# ESP <- raster(rs2["ESP_100"]) #change variable name to predicted esp layer for each depth
+# names(ESP) <- c("ESP")
+# ESP1 <- as(ESP, "SpatialPixelsDataFrame")
+# 
+# #NOT SURE EXACTLY WHAT'S HAPPENING HERE; no ECte, PHt, ESPt objects created in script earlier; they might be new objects but we'll need to edit this# 
+# #NEED UNCERTAINTY MAPS from the predictions
 
 setwd("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert")
 
@@ -177,10 +181,10 @@ uncst2
 #names(ECsd) <- c("ECsd")
 
 #If ECte, PHt, ESPt are predicted values and ECsd, PHsd, and ESPsd are uncertainty standard deviations
-ECte <- raster(rs2["EC_100"]);
+# ECte <- raster(rs2["EC_100"]);
 ECsd <- uncst2["EC_unc"]; 
 names(ECsd) <-"ECsd"
-ECsdr <- raster(EC)
+# ECsdr <- raster(EC)
 
 PHde=raster(rs2["pH_100"]);PHsd=uncst2["PH_unc"]; names(PHsd)=c("PHsd")
 
@@ -190,30 +194,34 @@ ESPt=raster(rs2["ESP_100"]);ESPsd=uncst2["ESP_unc"]; names(ESPsd)=c("ESPsd")
 ##obtain sample spatial autocorrelation
 library(automap)
 
-EC1 <- spTransform(EC1, CRS = CRS("+init=epsg:5070"))
-b <- nrow(EC1)
-c <- trunc(0.005 * b)
-jj <- EC1[sample(b, c), ]
-vrm <- autofitVariogram(EC ~ 1, jj) ### ERROR cannot deal with non-square cells
+ec_030_sp <- spTransform(rs_030["EC_030"], CRS = CRS("+init=epsg:5070"))
+b <- nrow(ec_030_sp)
+c <- trunc(0.01 * b)
+jj <- ec_030_sp[sample(b, c), ]
+ec_030_vrm <- autofitVariogram(EC_030 ~ 1, jj) ### ERROR cannot deal with non-square cells
 
-#plot correlation info
+
+
+# plot autocorrelation info
 library(spup)
 
-plot(vrm)#Note the spatial correlation model and the value of Range parameter
-acf((EC1$EC)) ##Also note the acf0 (at lag 0)
-EC_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph")
-plot(EC_crm, main = "EC correlogram")
+plot(ec_030_vrm) # Note the spatial correlation model and the value of Range parameter
+acf(ec_030_sp$EC_030) ##Also note the acf0 (at lag 0)
+ec_030_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph")
+plot(ec_030_crm, main = "EC 30cm correlogram")
 
-##develop input marginal and joint multivariate uncertainty models for defining MC models
-##ERROR Distribution parameters must be objects of the same class (change ECte to SpatialGridDataFrame?)
+
+
+## Develop input marginal and joint multivariate uncertainty models for defining MC models
+## ERROR Distribution parameters must be objects of the same class (change ECte to SpatialGridDataFrame?)
 EC_UM <- defineUM(distribution = "norm", 
-                  distr_param  = c(as(ECte, "SpatialGridDataFrame"), ECsd), 
-                  crm          = EC_crm, 
+                  distr_param  = c(rs_030["EC_030"], ECsd), 
+                  crm          = ec_030_crm, 
                   id           = "EC"
                   )
 PH_UM <- defineUM(distribution = "norm",
-                  distr_param = c(PHde,PHsd),
-                  crm         = PH_crm,
+                  distr_param  = c(PHde,PHsd),
+                  crm          = PH_crm,
                   id = "PH"
                   )
 ESP_UM <- defineUM(distribution = "norm",
@@ -230,7 +238,12 @@ cor(values(ECte),values(PHde))
 cor(values(ECte),values(ESPt))
 cor(values(PHde),values(ESPt))
 
-salinityMUM <- defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM), cormatrix = matrix(c(1, cor(values(ECte),values(PHde)), cor(values(ECte),values(ESPt)), cor(values(ECte), values(PHde)), 1, cor(values(PHde), values(ESPt)), cor(values(ECte), values(ESPt)), cor(values(PHde), values(ESPt)),1), nrow = 3, ncol = 3))
+salinityMUM <- defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM), 
+                         cormatrix = matrix(
+                             c(1, cor(values(ECte), values(PHde)), cor(values(ECte),values(ESPt)), cor(values(ECte), values(PHde)), 1, cor(values(PHde), values(ESPt)), cor(values(ECte), values(ESPt)), cor(values(PHde), values(ESPt)),1),
+                             nrow = 3, 
+                             ncol = 3)
+                         )
 class(salinityMUM)
 
 ##create MC realizations from the distributions
