@@ -1,17 +1,33 @@
 ###GSP salt affected soil maps
 ###salt affected soil classes
-###August 2020 JMP, SKB
+###August 2020 JMP, SKB, SR
 ##############################################################################
 ###session
 
+#check/load packages
+
+required.packages <- c('sp','rgdal','raster','snow','snowfall','parallel','tidyr','car','carData','dplyr','spacetime','gstat','automap','randomForest','fitdistrplus','e1071','caret','
+          soilassessment','soiltexture','GSIF','aqp','plyr','Hmisc','corrplot','factoextra','spup','purrr','lattice','ncf','npsurv','lsei',
+                       'qrnn','nnet','mda','RColorBrewer','vcd','readxls','maptools','neuralnet','psych', 'fmsb','doParallel')
+
+new.packages <- required.packages[!(required.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+lapply(required.packages, require, character.only=T)
+rm(required.packages, new.packages)
+## Increase active memory useable by raster package: Windows only
+# memory.limit(500000)
+## Raster settings: adjust based on system
+rasterOptions(maxmemory = 1e+09, chunksize = 1e+08, memfrac = 0.9)
+
+library(soilassessment)
 
 #############################################################################
 ##this section of code starts on p86 in the GSSmap_Technical_manual_3.pdf##
 
 ###predict salt classes###
 
-# setwd("G:/GSP/predictions/predictions")
-setwd("D:/geodata/project_data/gsp-sas/predictions")
+setwd("G:/GSP/predictions/predictions")
+# setwd("D:/geodata/project_data/gsp-sas/predictions")
 
 ### Read in prediction layers###
 library(raster)
@@ -45,20 +61,31 @@ rs_100 <- as(rs[[4:6]], "SpatialGridDataFrame")
 # saltiness
 library(soilassessment)
 
-rs_030$salty <- saltClass(rs_030$EC_100, rs_030$pH_100, rs_030$ESP_100,"FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
+rs_030$salty <- saltClass(rs_030$EC_030, rs_030$PH_030, rs_030$ESP_030,"FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
 rs_030$saltiness <- classCode(rs_030$salty, "saltclass") #add class names
 plot(rs_030$saltiness)
 plot(rs_030["saltiness"])
 
-
+rs_100$salty <- saltClass(rs_100$EC_100, rs_100$PH_100, rs_100$ESP_100,"FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
+rs_100$saltiness <- classCode(rs_100$salty, "saltclass") #add class names
+plot(rs_100$saltiness)
+plot(rs_100["saltiness"])
 
 # salt severity
-rs_030$salt_affected <- saltSeverity(rs_030$EC_100, rs_030$pH_100, rs_030$ESP_100, "FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
+
+rs_030$salt_affected <- saltSeverity(rs_030$EC_030, rs_030$PH_030, rs_030$ESP_030, "FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
 rs_030$saltaffectedness <- classCode(rs_030$salt_affected, "saltseverity") #add class names
 barplot(table(rs_030$saltaffectedness))
+plot(rs_030$saltaffectedness)
 plot(rs_030["saltaffectedness"], col = RColorBrewer::brewer.pal(11, "Spectral"))
+spplot(rs_030["saltaffectedness"])
 
-
+rs_100$salt_affected <- saltSeverity(rs_100$EC_100, rs_100$PH_100, rs_100$ESP_100, "FAO") #replace ec, ph, esp variables with predicted layers for each depth interval
+rs_100$saltaffectedness <- classCode(rs_100$salt_affected, "saltseverity") #add class names
+barplot(table(rs_100$saltaffectedness))
+plot(rs_100$saltaffectedness)
+plot(rs_100["saltaffectedness"], col = RColorBrewer::brewer.pal(11, "Spectral"))
+spplot(rs_100["saltaffectedness"])
 
 ### export salt class maps###
 
@@ -71,11 +98,14 @@ plot(rs_030["saltaffectedness"], col = RColorBrewer::brewer.pal(11, "Spectral"))
 
 #run for both 0-30cm and 30-100cm 
 rs_030$saltclasses <- as.numeric(rs_030$saltaffectedness) #convert factors to numeric
-salinity_LUT100 <- classLUT(rs_030["saltaffectedness"], "saltseverity") #change object name for depth as needed
-rgdal::writeGDAL(rs_030["saltclasses"], drivername = "GTiff", "Mid100_saltaffected.tif")
+salinity_LUT30 <- classLUT(rs_030["saltaffectedness"], "saltseverity") #change object name for depth as needed
+rgdal::writeGDAL(rs_030["saltclasses"], drivername = "GTiff", "Top030_saltaffected.tif")
+write.table(salinity_LUT30, file = "saltaffected_LUT30.txt", row.names = F)
+
+rs_100$saltclasses <- as.numeric(rs_100$saltaffectedness) #convert factors to numeric
+salinity_LUT100 <- classLUT(rs_100["saltaffectedness"], "saltseverity") #change object name for depth as needed
+rgdal::writeGDAL(rs_100["saltclasses"], drivername = "GTiff", "Mid100_saltaffected.tif")
 write.table(salinity_LUT100, file = "saltaffected_LUT100.txt", row.names = F)
-
-
 ########################################################################
 ###accuracy assessment of salt class maps; p88###
 
@@ -87,17 +117,19 @@ getwd()
 
 #load training_data.RData
 
-load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+load(file = "LDM-compact_20200709.RData")
 #also load training data into environment, test is test points
 
 soilv <- test
 
-soilv <- soilv[c(1,10:18)] #get rid of covariate columns
+soilv <- soilv[c(1,10:18)] #get rid of covariate columns,keep pedon_key and observed values
+head(soilv)
+
 
 #### predict salt classes for each test point
-soilv$saltaffected1 <- saltSeverity(ec  = soilv$ec_ptf.030_100_cm, 
-                                    ph  = soilv$ph_ptf.030_100_cm, 
-                                    ESP = soilv$esp.030_100_cm, 
+soilv$saltaffected1 <- saltSeverity(ec  = soilv$ec_ptf.000_030_cm, 
+                                    ph  = soilv$ph_ptf.000_030_cm, 
+                                    ESP = soilv$esp.000_030_cm, 
                                     "FAO"
                                     ) #change for each depth
 summary(soilv$saltaffected1)
@@ -113,20 +145,25 @@ test2 <- cbind(s_mps_sf["pedon_key"], sf::st_coordinates(s_mps_sf)) #extract coo
 soilv <- merge(x = test2, y = soilv, by = "pedon_key", all.y = TRUE) #merge coordinates with test data
 summary(soilv)
 
-rs_030.ov <- over(as(soilv, "Spatial"), rs_030) #combine predictions with test data ####I DON'T KNOW IF THIS IS DOING ANYTHING.Nothing from soilv shows up with summary(rs2.ov) 
+rs_030.ov <- over(as(soilv, "Spatial"), rs_030) #combine predictions with test data ####I DON'T KNOW IF THIS IS DOING ANYTHING.Nothing from soilv shows up with summary(rsxx.ov) 
 
 saltclasses.ovv <- rs_030.ov
+summary(saltclasses.ovv) #check for salt_affected and saltaffectedness
+summary(soilv) #check for saltaffected1 and saltaffectedness1
 
-soilv$salt_affected    <- saltclasses.ovv$salt_affected #take predicted value for salt affected and add to the validataion points
+soilv$salt_affected <- saltclasses.ovv$salt_affected #take predicted value for salt affected and add to the validataion points
 soilv$saltaffectedness <- saltclasses.ovv$saltaffectedness #take predicted value for saltaffectedness and add to the validation points
 #check summary of extracted classified pixels
 summary(soilv$salt_affected)
 summary(soilv$saltaffectedness)
+summary(soilv$saltaffected1)
+summary(soilv$saltaffectedness1)
 
 ##get rid of NAs
 soilv <- subset(soilv, !is.na(soilv$saltaffectedness1))
 soilv <- subset(soilv, !is.na(soilv$saltaffectedness))
-
+soilv <- subset(soilv, !is.na(soilv$salt_affected))
+soilv <- subset(soilv, !is.na(soilv$saltaffected1))
 
 ##generate confusion matrix and Kappa
 #####gives error - all arguments must have the same length...but they have the same length so?????? I think its because there's a different max value for prediction map vs predictions at test points. works when done on named fields (saltaffectedness and saltaffectedness1, rather than on numbered fields salt_affected and saltaffected1)
@@ -141,75 +178,97 @@ agreementplot(table(soilv$sa, soilv$sa1),
               main = "Accuracy assessment",xlab = "Class codes in holdout samples",
               ylab = "Class codes in map")
 
-Kappa(table(soilv$saltaffectedness, soilv$saltaffectedness1))
+Kappa(confusion(soilv$salt_affected, soilv$saltaffected1))
 
 
 ########################################################################
 ###uncertainty of salt class maps with monte-carlo simulations; p90###
 
-# ##convert input layers to raster files (ours may already be raster objects?)
-# library(sp)
-# 
-# EC_030 <- raster(rs_030["EC_030"]) #change variable name to predicted ec layer for each depth
-# EC_030_spdf <- as(EC_030, "SpatialPixelsDataFrame") 
-# names(EC_030_spdf) <- c("EC")
-# 
-# PH <- raster(rs2["pH_100"]) #change variable name to predicted ph layer for each depth
-# names(PH) <- c("PH")
-# PH1 <- as(PH, "SpatialPixelsDataFrame")
-# 
-# ESP <- raster(rs2["ESP_100"]) #change variable name to predicted esp layer for each depth
-# names(ESP) <- c("ESP")
-# ESP1 <- as(ESP, "SpatialPixelsDataFrame")
-# 
+ ##convert input layers to raster files (ours may already be raster objects?) library(sp)
+
+EC_030 <- raster(rs_030["EC_030"]) #change variable name to predicted ec layer for each depth
+names(EC_030)<-c("EC") 
+EC1 <- as(EC_030, "SpatialPixelsDataFrame")
+#EC_030_spdf <- as(EC_030, "SpatialPixelsDataFrame") 
+ #names(EC_030_spdf) <- c("EC")
+ 
+ PH_030 <- raster(rs_030["PH_030"]) #change variable name to predicted ph layer for each depth
+ names(PH_030) <- c("PH")
+ PH1 <- as(PH_030, "SpatialPixelsDataFrame")
+ 
+ ESP_030 <- raster(rs_030["ESP_030"]) #change variable name to predicted esp layer for each depth
+ names(ESP_030) <- c("ESP")
+ ESP1 <- as(ESP_030, "SpatialPixelsDataFrame")
+ 
 # #NOT SURE EXACTLY WHAT'S HAPPENING HERE; no ECte, PHt, ESPt objects created in script earlier; they might be new objects but we'll need to edit this# 
 # #NEED UNCERTAINTY MAPS from the predictions
 
-setwd("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert")
+setwd("G:/GSP/predictions/acc_unc")
 
 ##bring in uncertainty layers and stack them
-unc <- c("ec100_uncert_predsd.tif", "ph_100_uncert_predsd.tif", "notr_esp_100_t25_nomlra_prun_sd_nafw.tif")
+unc <- c("ec030_predsd.tif", "ph_030_uncert_predsd.tif", "notr_esp_030_t25_nomlra_prun_sd_nafw.tif")
 uncst <- stack(unc)
 uncst2 <- as(uncst, "SpatialGridDataFrame")
 names(uncst2) <- c("EC_unc", "PH_unc", "ESP_unc")
 uncst2
 
-##or bring in uncertainty layers one at a time
-#ECunc <- c("ec_100_preduncert.tif")
-#ECunc <- raster(ECunc)
-#ECsd <- ECunc
-#names(ECsd) <- c("ECsd")
 
 #If ECte, PHt, ESPt are predicted values and ECsd, PHsd, and ESPsd are uncertainty standard deviations
-# ECte <- raster(rs2["EC_100"]);
+ECte <- raster(rs_030["EC_030"]);
 ECsd <- uncst2["EC_unc"]; 
 names(ECsd) <-"ECsd"
-# ECsdr <- raster(EC)
 
-PHde=raster(rs2["pH_100"]);PHsd=uncst2["PH_unc"]; names(PHsd)=c("PHsd")
 
-ESPt=raster(rs2["ESP_100"]);ESPsd=uncst2["ESP_unc"]; names(ESPsd)=c("ESPsd")
+PHde=raster(rs_030["PH_030"]);
+PHsd=uncst2["PH_unc"]; 
+names(PHsd)=c("PHsd")
+
+ESPt=raster(rs_030["ESP_030"]);
+ESPsd=uncst2["ESP_unc"];
+names(ESPsd)=c("ESPsd")
 
 
 ##obtain sample spatial autocorrelation
+###############
 library(automap)
 
-ec_030_sp <- spTransform(rs_030["EC_030"], CRS = CRS("+init=epsg:5070"))
-b <- nrow(ec_030_sp)
-c <- trunc(0.01 * b)
-jj <- ec_030_sp[sample(b, c), ]
-ec_030_vrm <- autofitVariogram(EC_030 ~ 1, jj) ### ERROR cannot deal with non-square cells
+ec_030_sp <- spTransform(rs_030["EC_030"], CRS = CRS("+init=epsg:5070")) #change to square pixels?
+b1 <- nrow(ec_030_sp)
+c1 <- trunc(0.01 * b1)
+jj1 <- ec_030_sp[sample(b1, c1), ]
+ec_030_vrm <- autofitVariogram(EC_030 ~ 1, jj1) ### ERROR cannot deal with non-square cells
 
+ph_030_sp <- spTransform(rs_030["PH_030"], CRS = CRS("+init=epsg:5070"))
+b2 <- nrow(ph_030_sp)
+c2 <- trunc(0.01 *b2)
+jj2 <- ph_030_sp[sample(b2, c2), ]
+ph_030_vrm <- autofitVariogram(PH_030 ~ 1, jj2)
 
+esp_030_sp <- spTransform(rs_030["ESP_030"], CRS = CRS("+init=epsg:5070"))
+b3 <- nrow(esp_030_sp)
+c3 <- trunc(0.01 *b3)
+jj3 <- esp_030_sp[sample(b3, c3), ]
+esp_030_vrm <- autofitVariogram(ESP_030 ~ 1, jj3)
 
 # plot autocorrelation info
 library(spup)
 
 plot(ec_030_vrm) # Note the spatial correlation model and the value of Range parameter
 acf(ec_030_sp$EC_030) ##Also note the acf0 (at lag 0)
-ec_030_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph")
+ec_030_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph") #change acf0 to 0.85 to match manual??
 plot(ec_030_crm, main = "EC 30cm correlogram")
 
+plot(ph_030_vrm)
+acf(ph_030_sp$PH_030)
+ph_030_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph") #how to differentiate from Ec?
+plot(ph_030_crm, main = "PH 30cm correlogram")
+
+plot(esp_030_vrm)
+acf(esp_030_sp$ESP_030)
+esp_030_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph")
+plot(esp_030_crm, main = "ESP 30cm correlogram")
+
+###################
 
 
 ## Develop input marginal and joint multivariate uncertainty models for defining MC models
@@ -220,13 +279,13 @@ EC_UM <- defineUM(distribution = "norm",
                   id           = "EC"
                   )
 PH_UM <- defineUM(distribution = "norm",
-                  distr_param  = c(PHde,PHsd),
-                  crm          = PH_crm,
+                  distr_param  = c(rs_030["PH_030"],PHsd),
+                  crm          = ph_030_crm,
                   id = "PH"
                   )
 ESP_UM <- defineUM(distribution = "norm",
-                   distr_param  = c(ESPt,ESPsd),
-                   crm          = ESP_crm,
+                   distr_param  = c(rs_030["ESP_030"],ESPsd),
+                   crm          = esp_030_crm,
                    id           = "ESP"
                    )
 class(EC_UM)
@@ -234,21 +293,33 @@ class(PH_UM)
 class(ESP_UM)
 
 #get the correlation values and use them in defining the Monte Carlo Uncertainty Mode (MUM)
-cor(values(ECte),values(PHde))
-cor(values(ECte),values(ESPt))
-cor(values(PHde),values(ESPt))
+##cor(values(rs_030$EC_030),values(rs_030$PH_030)) ###ERROR unable to find an inherited method for function 'values' for signature '"numeric"'
+#cor(values(ECte),values(ESPt)) ###returns NA
+#(values(PHde),values(ESPt))
 
-salinityMUM <- defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM), 
-                         cormatrix = matrix(
-                             c(1, cor(values(ECte), values(PHde)), cor(values(ECte),values(ESPt)), cor(values(ECte), values(PHde)), 1, cor(values(PHde), values(ESPt)), cor(values(ECte), values(ESPt)), cor(values(PHde), values(ESPt)),1),
-                             nrow = 3, 
-                             ncol = 3)
-                         )
+st <- stack(ECte, PHde, ESPt)
+cor <- cor(sampleRandom(st, size= ncell(ECte)*0.05), method = "spearman") #try it on full range?? this is sampled
+df <- corrplot(cor, method = "number")
+
+
+
+salinityMUM <- defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM), cor, nrow = 3, ncol = 3)
+                         
+
+
+###### this wasn't working so I did the above
+#salinityMUM <- defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM), 
+#                         cormatrix = matrix(
+#                             c(1, cor(values(ECte), values(PHde)), cor(values(ECte),values(ESPt)), cor(values(ECte), values(PHde)), 1#, cor(values(PHde), values(ESPt)), cor(values(ECte), values(ESPt)), cor(values(PHde), values(ESPt)),1),
+#                             nrow = 3, 
+#                             ncol = 3)
+#                         )
 class(salinityMUM)
 
 ##create MC realizations from the distributions
 MC <- 100
-input_sample <- genSample(UMobject = salinityMUM, n = MC, samplemethod = "ugs", nmax = 20, asList = FALSE)
+input_sample <- genSample(UMobject = salinityMUM, n = MC, samplemethod = "ugs", nmax = 20, asList = FALSE) ####big error
+
 
 #compute input sample statistics
 EC_sample <- input_sample[[1:MC]]
