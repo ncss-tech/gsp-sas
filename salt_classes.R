@@ -40,7 +40,10 @@ f <- c(PH_030 = "ph_030_qrf_mlra_pm_NULL_final4_fill_mask.tif",
        ESP_100 = "notr_esp_100_t25_nomlra_nafw.tif" 
        ) #change file names as needed
 #f <- c("ec_030_bt_nomlra_wstatspm.tif", "cv_esp_030_nomlra_statspm.tif", "ph_030_qrf_mlra_pm_NULL_final2.tif") #change file names as needed
-rs <- stack(f)
+rs <- readAll(stack(f))
+rs <- projectRaster(rs, crs = "+init=epsg:5070", progress = "text")
+
+
 
 rs #inspect range in values
 
@@ -141,6 +144,8 @@ summary(soilv$saltaffectedness1)
 soilv <- subset(soilv, !is.na(soilv$saltaffectedness1)) #trim test points down to only ones with relevant data
 summary(soilv)
 
+library(sf)
+s_mps_sf <- st_transform(s_mps_sf, crs = "+init=epsg:5070")
 test2 <- cbind(s_mps_sf["pedon_key"], sf::st_coordinates(s_mps_sf)) #extract coordinates from lab data
 soilv <- merge(x = test2, y = soilv, by = "pedon_key", all.y = TRUE) #merge coordinates with test data
 summary(soilv)
@@ -160,10 +165,7 @@ summary(soilv$saltaffected1)
 summary(soilv$saltaffectedness1)
 
 ##get rid of NAs
-soilv <- subset(soilv, !is.na(soilv$saltaffectedness1))
-soilv <- subset(soilv, !is.na(soilv$saltaffectedness))
-soilv <- subset(soilv, !is.na(soilv$salt_affected))
-soilv <- subset(soilv, !is.na(soilv$saltaffected1))
+soilv <- subset(soilv, complete.cases(saltaffectedness1, saltaffectedness, salt_affected, saltaffected1))
 
 ##generate confusion matrix and Kappa
 #####gives error - all arguments must have the same length...but they have the same length so?????? I think its because there's a different max value for prediction map vs predictions at test points. works when done on named fields (saltaffectedness and saltaffectedness1, rather than on numbered fields salt_affected and saltaffected1)
@@ -178,7 +180,7 @@ agreementplot(table(soilv$sa, soilv$sa1),
               main = "Accuracy assessment",xlab = "Class codes in holdout samples",
               ylab = "Class codes in map")
 
-Kappa(confusion(soilv$salt_affected, soilv$saltaffected1))
+Kappa(table(soilv$sa, soilv$sa1))
 
 
 ########################################################################
@@ -203,13 +205,16 @@ EC1 <- as(EC_030, "SpatialPixelsDataFrame")
 # #NOT SURE EXACTLY WHAT'S HAPPENING HERE; no ECte, PHt, ESPt objects created in script earlier; they might be new objects but we'll need to edit this# 
 # #NEED UNCERTAINTY MAPS from the predictions
 
-setwd("G:/GSP/predictions/acc_unc")
+
+ setwd("G:/GSP/predictions/acc_unc")
 
 ##bring in uncertainty layers and stack them
-unc <- c("ec030_predsd.tif", "ph_030_uncert_predsd.tif", "notr_esp_030_t25_nomlra_prun_sd_nafw.tif")
-uncst <- stack(unc)
+unc <- c(EC_unc = "ec030_predsd.tif",
+         PH_unc = "ph_030_uncert_predsd.tif",
+         ESP_unc = "notr_esp_030_t25_nomlra_prun_sd_nafw.tif"
+         )
+uncst <- projectRaster(readAll(stack(unc)), crs = "+init=epsg:5070", progress = "text")
 uncst2 <- as(uncst, "SpatialGridDataFrame")
-names(uncst2) <- c("EC_unc", "PH_unc", "ESP_unc")
 uncst2
 
 
@@ -232,19 +237,19 @@ names(ESPsd)=c("ESPsd")
 ###############
 library(automap)
 
-ec_030_sp <- spTransform(rs_030["EC_030"], CRS = CRS("+init=epsg:5070")) #change to square pixels?
+ec_030_sp <- as(rs_030["EC_030"], "SpatialPointsDataFrame") 
 b1 <- nrow(ec_030_sp)
 c1 <- trunc(0.01 * b1)
 jj1 <- ec_030_sp[sample(b1, c1), ]
-ec_030_vrm <- autofitVariogram(EC_030 ~ 1, jj1) ### ERROR cannot deal with non-square cells
+ec_030_vrm <- autofitVariogram(EC_030 ~ 1, jj1) 
 
-ph_030_sp <- spTransform(rs_030["PH_030"], CRS = CRS("+init=epsg:5070"))
+ph_030_sp <- as(rs_030["PH_030"], "SpatialPointsDataFrame")
 b2 <- nrow(ph_030_sp)
 c2 <- trunc(0.01 *b2)
 jj2 <- ph_030_sp[sample(b2, c2), ]
 ph_030_vrm <- autofitVariogram(PH_030 ~ 1, jj2)
 
-esp_030_sp <- spTransform(rs_030["ESP_030"], CRS = CRS("+init=epsg:5070"))
+esp_030_sp <- as(rs_030["ESP_030"], "SpatialPointsDataFrame")
 b3 <- nrow(esp_030_sp)
 c3 <- trunc(0.01 *b3)
 jj3 <- esp_030_sp[sample(b3, c3), ]
@@ -255,7 +260,7 @@ library(spup)
 
 plot(ec_030_vrm) # Note the spatial correlation model and the value of Range parameter
 acf(ec_030_sp$EC_030) ##Also note the acf0 (at lag 0)
-ec_030_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph") #change acf0 to 0.85 to match manual??
+ec_030_crm <- makeCRM(acf0 = 1, range = 250000, model = "Sph") #change acf0 to 0.85 to match manual??
 plot(ec_030_crm, main = "EC 30cm correlogram")
 
 plot(ph_030_vrm)
@@ -265,7 +270,7 @@ plot(ph_030_crm, main = "PH 30cm correlogram")
 
 plot(esp_030_vrm)
 acf(esp_030_sp$ESP_030)
-esp_030_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph")
+esp_030_crm <- makeCRM(acf0 = 1, range = 150000, model = "Sph")
 plot(esp_030_crm, main = "ESP 30cm correlogram")
 
 ###################
@@ -293,32 +298,24 @@ class(PH_UM)
 class(ESP_UM)
 
 #get the correlation values and use them in defining the Monte Carlo Uncertainty Mode (MUM)
-##cor(values(rs_030$EC_030),values(rs_030$PH_030)) ###ERROR unable to find an inherited method for function 'values' for signature '"numeric"'
-#cor(values(ECte),values(ESPt)) ###returns NA
-#(values(PHde),values(ESPt))
 
-st <- stack(ECte, PHde, ESPt)
-cor <- cor(sampleRandom(st, size= ncell(ECte)*0.05), method = "spearman") #try it on full range?? this is sampled
-df <- corrplot(cor, method = "number")
+cor(values(ECte),values(PHde), use = "complete.obs", method = c("spearman"));cor(values(ECte), values(ESPt), use = "complete.obs");cor(values(PHde), values(ESPt), use = "complete.obs")
 
-
-
-salinityMUM <- defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM), cor, nrow = 3, ncol = 3)
-                         
+salinityMUM = defineMUM(UMlist = list(EC_UM, PH_UM ,ESP_UM),
+                        cormatrix = matrix(c(1, cor(values(ECte), values(PHde), use = "complete.obs", method = c("spearman")),
+                                             cor(values(ECte),values(ESPt), use = "complete.obs", method = c("spearman")),
+                                             cor(values(ECte), values(PHde), use = "complete.obs", method = c("spearman")), 1,
+                                           cor(values(PHde), values(ESPt), use = "complete.obs", method = c("spearman")),
+                        cor(values(ECte), values(ESPt), use = "complete.obs", method = c("spearman")), cor(values(PHde), values(ESPt), use = "complete.obs", method = c("spearman")),1), nrow = 3, ncol = 3))
 
 
-###### this wasn't working so I did the above
-#salinityMUM <- defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM), 
-#                         cormatrix = matrix(
-#                             c(1, cor(values(ECte), values(PHde)), cor(values(ECte),values(ESPt)), cor(values(ECte), values(PHde)), 1#, cor(values(PHde), values(ESPt)), cor(values(ECte), values(ESPt)), cor(values(PHde), values(ESPt)),1),
-#                             nrow = 3, 
-#                             ncol = 3)
-#                         )
+
 class(salinityMUM)
+
 
 ##create MC realizations from the distributions
 MC <- 100
-input_sample <- genSample(UMobject = salinityMUM, n = MC, samplemethod = "ugs", nmax = 20, asList = FALSE) ####big error
+input_sample <- genSample(UMobject = salinityMUM, n = MC, samplemethod = "ugs", p = 0, nmax = 20, asList = FALSE, debug.level = 1) 
 
 
 #compute input sample statistics
