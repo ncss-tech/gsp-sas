@@ -216,8 +216,8 @@ unc <- c(EC_unc  = "ec030_predsd.tif",
          ESP_unc = "notr_esp_030_t25_nomlra_prun_sd_nafw.tif"
          )
 uncst <- projectRaster(readAll(stack(unc)), crs = "+init=epsg:5070", progress = "text")
-uncst$EC_unct <- log(uncst$EC_unc)
-uncst$ESP_unct <- log(uncst$ESP_unc)
+uncst$EC_unct <- log(uncst$EC_unc +0.1)
+uncst$ESP_unct <- log(uncst$ESP_unc +0.1)
 
 uncst2 <- as(uncst, "SpatialGridDataFrame")
 uncst2
