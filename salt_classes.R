@@ -26,8 +26,8 @@ library(soilassessment)
 
 ###predict salt classes###
 
-# setwd("G:/GSP/predictions/predictions")
-setwd("D:/geodata/project_data/gsp-sas/predictions")
+setwd("G:/GSP/predictions/predictions")
+#setwd("D:/geodata/project_data/gsp-sas/predictions")
 
 ### Read in prediction layers###
 library(raster)
@@ -114,7 +114,7 @@ write.table(salinity_LUT100, file = "saltaffected_LUT100.txt", row.names = F)
 ##import and classify validation points for salt classes; these are OBSERVED values
 setwd("G:/GSP/pointdata")
 getwd()
-setwd("C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas")
+#setwd("C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas")
 
 #soilv <- readOGR("filepath", "validation dataset") #change file path and validation dataset name 
 
@@ -144,7 +144,7 @@ summary(soilv$saltaffectedness1)
 ##extract the salt classes from the map using the validation samples
 soilv <- subset(soilv, !is.na(soilv$saltaffectedness1)) #trim test points down to only ones with relevant data
 summary(soilv)
-
+library(sf)
 s_mps_sf <- st_transform(s_mps_sf, crs = "+init=epsg:5070")
 test2 <- cbind(s_mps_sf["pedon_key"], sf::st_coordinates(s_mps_sf)) #extract coordinates from lab data
 soilv <- merge(x = test2, y = soilv, by = "pedon_key", all.y = TRUE) #merge coordinates with test data
@@ -187,18 +187,20 @@ Kappa(table(soilv$sa, soilv$sa1))
 ###uncertainty of salt class maps with monte-carlo simulations; p90###
 
  ##convert input layers to raster files (ours may already be raster objects?) library(sp)
+#transform EC and ESP
+rs_030$EC_030t <- log(rs_030$EC_030 +0.1)
+rs_030$ESP_030t <- log(rs_030$ESP_030 +0.1)
 
-EC_030 <- raster(rs_030["EC_030"]) #change variable name to predicted ec layer for each depth
+EC_030 <- raster(rs_030["EC_030t"]) #change variable name to predicted ec layer for each depth
 names(EC_030)<-c("EC") 
 EC1 <- as(EC_030, "SpatialPixelsDataFrame")
-#EC_030_spdf <- as(EC_030, "SpatialPixelsDataFrame") 
- #names(EC_030_spdf) <- c("EC")
+
  
  PH_030 <- raster(rs_030["PH_030"]) #change variable name to predicted ph layer for each depth
  names(PH_030) <- c("PH")
  PH1 <- as(PH_030, "SpatialPixelsDataFrame")
  
- ESP_030 <- raster(rs_030["ESP_030"]) #change variable name to predicted esp layer for each depth
+ ESP_030 <- raster(rs_030["ESP_030t"]) #change variable name to predicted esp layer for each depth
  names(ESP_030) <- c("ESP")
  ESP1 <- as(ESP_030, "SpatialPixelsDataFrame")
  
@@ -214,13 +216,17 @@ unc <- c(EC_unc  = "ec030_predsd.tif",
          ESP_unc = "notr_esp_030_t25_nomlra_prun_sd_nafw.tif"
          )
 uncst <- projectRaster(readAll(stack(unc)), crs = "+init=epsg:5070", progress = "text")
+uncst$EC_unct <- log(uncst$EC_unc)
+uncst$ESP_unct <- log(uncst$ESP_unc)
+
 uncst2 <- as(uncst, "SpatialGridDataFrame")
 uncst2
 
 
 #If ECte, PHt, ESPt are predicted values and ECsd, PHsd, and ESPsd are uncertainty standard deviations
-ECte <- raster(rs_030["EC_030"]);
-ECsd <- uncst2["EC_unc"]; 
+#ECte <- raster(rs_030["EC_030"]);
+ECte <- raster(rs_030["EC_030t"])
+ECsd <- uncst2["EC_unct"];
 names(ECsd) <-"ECsd"
 
 
@@ -228,8 +234,8 @@ PHde=raster(rs_030["PH_030"]);
 PHsd=uncst2["PH_unc"]; 
 names(PHsd)=c("PHsd")
 
-ESPt=raster(rs_030["ESP_030"]);
-ESPsd=uncst2["ESP_unc"];
+ESPt <- raster(rs_030["ESP_030t"])
+ESPsd=uncst2["ESP_unct"];
 names(ESPsd)=c("ESPsd")
 
 
@@ -237,11 +243,11 @@ names(ESPsd)=c("ESPsd")
 ###############
 library(automap)
 
-ec_030_sp <- as(rs_030["EC_030"], "SpatialPointsDataFrame") #change to square pixels?
+ec_030_sp <- as(rs_030["EC_030t"], "SpatialPointsDataFrame") #change to square pixels?
 b1 <- nrow(ec_030_sp)
 c1 <- trunc(0.01 * b1)
 jj1 <- ec_030_sp[sample(b1, c1), ]
-ec_030_vrm <- autofitVariogram(EC_030 ~ 1, jj1) 
+ec_030_vrm <- autofitVariogram(EC_030t ~ 1, jj1) 
 
 ph_030_sp <- as(rs_030["PH_030"], "SpatialPointsDataFrame")
 b2 <- nrow(ph_030_sp)
@@ -249,17 +255,17 @@ c2 <- trunc(0.01 * b2)
 jj2 <- ph_030_sp[sample(b2, c2), ]
 ph_030_vrm <- autofitVariogram(PH_030 ~ 1, jj2)
 
-esp_030_sp <- as(rs_030["ESP_030"], "SpatialPointsDataFrame")
+esp_030_sp <- as(rs_030["ESP_030t"], "SpatialPointsDataFrame")
 b3 <- nrow(esp_030_sp)
 c3 <- trunc(0.01 *b3)
 jj3 <- esp_030_sp[sample(b3, c3), ]
-esp_030_vrm <- autofitVariogram(ESP_030 ~ 1, jj3)
+esp_030_vrm <- autofitVariogram(ESP_030t ~ 1, jj3)
 
 # plot autocorrelation info
 library(spup)
 
 plot(ec_030_vrm) # Note the spatial correlation model and the value of Range parameter
-acf(ec_030_sp$EC_030) ##Also note the acf0 (at lag 0)
+acf(ec_030_sp$EC_030t) ##Also note the acf0 (at lag 0)
 ec_030_crm <- makeCRM(acf0 = 1, range = 250000, model = "Sph") #change acf0 to 0.85 to match manual??
 plot(ec_030_crm, main = "EC 30cm correlogram")
 
@@ -269,7 +275,7 @@ ph_030_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph") #how to different
 plot(ph_030_crm, main = "PH 30cm correlogram")
 
 plot(esp_030_vrm)
-acf(esp_030_sp$ESP_030)
+acf(esp_030_sp$ESP_030t)
 esp_030_crm <- makeCRM(acf0 = 1, range = 150000, model = "Sph")
 plot(esp_030_crm, main = "ESP 30cm correlogram")
 
@@ -279,7 +285,7 @@ plot(esp_030_crm, main = "ESP 30cm correlogram")
 ## Develop input marginal and joint multivariate uncertainty models for defining MC models
 ## ERROR Distribution parameters must be objects of the same class (change ECte to SpatialGridDataFrame?)
 EC_UM <- defineUM(distribution = "norm", 
-                  distr_param  = c(rs_030["EC_030"], ECsd), 
+                  distr_param  = c(rs_030["EC_030t"], ECsd), 
                   crm          = ec_030_crm, 
                   id           = "EC"
                   )
@@ -289,7 +295,7 @@ PH_UM <- defineUM(distribution = "norm",
                   id = "PH"
                   )
 ESP_UM <- defineUM(distribution = "norm",
-                   distr_param  = c(rs_030["ESP_030"],ESPsd),
+                   distr_param  = c(rs_030["ESP_030t"],ESPsd),
                    crm          = esp_030_crm,
                    id           = "ESP"
                    )
@@ -299,14 +305,14 @@ class(ESP_UM)
 
 #get the correlation values and use them in defining the Monte Carlo Uncertainty Mode (MUM)
 
-cor(values(ECte),values(PHde), use = "complete.obs", method = c("spearman"));cor(values(ECte), values(ESPt), use = "complete.obs");cor(values(PHde), values(ESPt), use = "complete.obs")
+cor(values(ECte),values(PHde), use = "complete.obs");cor(values(ECte), values(ESPt), use = "complete.obs");cor(values(PHde), values(ESPt), use = "complete.obs")
 
 salinityMUM = defineMUM(UMlist = list(EC_UM, PH_UM ,ESP_UM),
-                        cormatrix = matrix(c(1, cor(values(ECte), values(PHde), use = "complete.obs", method = c("spearman")),
-                                             cor(values(ECte),values(ESPt), use = "complete.obs", method = c("spearman")),
-                                             cor(values(ECte), values(PHde), use = "complete.obs", method = c("spearman")), 1,
-                                           cor(values(PHde), values(ESPt), use = "complete.obs", method = c("spearman")),
-                        cor(values(ECte), values(ESPt), use = "complete.obs", method = c("spearman")), cor(values(PHde), values(ESPt), use = "complete.obs", method = c("spearman")),1), nrow = 3, ncol = 3))
+                        cormatrix = matrix(c(1, cor(values(ECte), values(PHde), use = "complete.obs"),
+                                             cor(values(ECte),values(ESPt), use = "complete.obs"),
+                                             cor(values(ECte), values(PHde), use = "complete.obs"), 1,
+                                           cor(values(PHde), values(ESPt), use = "complete.obs"),
+                        cor(values(ECte), values(ESPt), use = "complete.obs"), cor(values(PHde), values(ESPt), use = "complete.obs"),1), nrow = 3, ncol = 3))
 
 
 
@@ -315,7 +321,7 @@ class(salinityMUM)
 
 ##create MC realizations from the distributions
 MC <- 100
-input_sample <- genSample(UMobject = salinityMUM, n = MC, samplemethod = "ugs", p = 0, nmax = 20, asList = FALSE, debug.level = 1) 
+input_sample <- genSample(UMobject = salinityMUM, n = MC, samplemethod = "ugs", p = 0, nmax = 20, asList = FALSE) 
 
 
 #compute input sample statistics
