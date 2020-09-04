@@ -243,40 +243,59 @@ names(ESPsd)=c("ESPsd")
 ###############
 library(automap)
 
-ec_030_sp <- as(rs_030["EC_030t"], "SpatialPointsDataFrame") #change to square pixels?
-b1 <- nrow(ec_030_sp)
-c1 <- trunc(0.01 * b1)
-jj1 <- ec_030_sp[sample(b1, c1), ]
-ec_030_vrm <- autofitVariogram(EC_030t ~ 1, jj1) 
+#ec_030_sp <- as(rs_030["EC_030t"], "SpatialPointsDataFrame") #change to square pixels?
+#b1 <- nrow(ec_030_sp)
+#c1 <- trunc(0.01 * b1)
+#jj1 <- ec_030_sp[sample(b1, c1), ]
+#ec_030_vrm <- autofitVariogram(EC_030t ~ 1, jj1) 
 
-ph_030_sp <- as(rs_030["PH_030"], "SpatialPointsDataFrame")
-b2 <- nrow(ph_030_sp)
-c2 <- trunc(0.01 * b2)
-jj2 <- ph_030_sp[sample(b2, c2), ]
-ph_030_vrm <- autofitVariogram(PH_030 ~ 1, jj2)
+EC11 <- as(EC1, "SpatialPointsDataFrame")
+b1 <- nrow(EC11)
+c1 <- trunc(.01*b1)
+jj1 <- EC11[sample(b1,c1),]
+ec_030_vrm <- autofitVariogram(EC~1,jj1)
 
-esp_030_sp <- as(rs_030["ESP_030t"], "SpatialPointsDataFrame")
-b3 <- nrow(esp_030_sp)
-c3 <- trunc(0.01 *b3)
-jj3 <- esp_030_sp[sample(b3, c3), ]
-esp_030_vrm <- autofitVariogram(ESP_030t ~ 1, jj3)
+#ph_030_sp <- as(rs_030["PH_030"], "SpatialPointsDataFrame")
+#b2 <- nrow(ph_030_sp)
+#c2 <- trunc(0.01 * b2)
+#jj2 <- ph_030_sp[sample(b2, c2), ]
+#ph_030_vrm <- autofitVariogram(PH_030 ~ 1, jj2)
+
+PH11 <- as(PH1, "SpatialPointsDataFrame")
+b2 <- nrow(PH11)
+c2 <- trunc(.01*c2)
+jj2 <- PH11[sample(b2,c2),]
+ph_030_vrm <- autofitVariogram(PH~1,jj2)
+
+
+#esp_030_sp <- as(rs_030["ESP_030t"], "SpatialPointsDataFrame")
+#b3 <- nrow(esp_030_sp)
+#c3 <- trunc(0.01 *b3)
+#jj3 <- esp_030_sp[sample(b3, c3), ]
+#esp_030_vrm <- autofitVariogram(ESP_030t ~ 1, jj3)
+
+ESP11 <- as(ESP1, "SpatialPointsDataFrame")
+b3 <- nrow(ESP11)
+c3 <- trunc(.01*c3)
+jj3 <- ESP11[sample(b3,c3),]
+esp_030_vrm <- autofitVariogram(ESP~1,jj3)
 
 # plot autocorrelation info
 library(spup)
 
 plot(ec_030_vrm) # Note the spatial correlation model and the value of Range parameter
 acf(ec_030_sp$EC_030t) ##Also note the acf0 (at lag 0)
-ec_030_crm <- makeCRM(acf0 = 1, range = 250000, model = "Sph") #change acf0 to 0.85 to match manual??
+ec_030_crm <- makeCRM(acf0 = 1, range = 20000, model = "Sph") #change acf0 to 0.85 to match manual??
 plot(ec_030_crm, main = "EC 30cm correlogram")
 
 plot(ph_030_vrm)
 acf(ph_030_sp$PH_030)
-ph_030_crm <- makeCRM(acf0 = 1, range = 203998, model = "Sph") #how to differentiate from Ec?
+ph_030_crm <- makeCRM(acf0 = 1, range = 20000, model = "Sph") #how to differentiate from Ec?
 plot(ph_030_crm, main = "PH 30cm correlogram")
 
 plot(esp_030_vrm)
 acf(esp_030_sp$ESP_030t)
-esp_030_crm <- makeCRM(acf0 = 1, range = 150000, model = "Sph")
+esp_030_crm <- makeCRM(acf0 = 1, range = 20000, model = "Sph")
 plot(esp_030_crm, main = "ESP 30cm correlogram")
 
 ###################
@@ -321,7 +340,8 @@ class(salinityMUM)
 
 ##create MC realizations from the distributions
 MC <- 100
-input_sample <- genSample(UMobject = salinityMUM, n = MC, samplemethod = "ugs", p = 0, nmax = 20, asList = FALSE) 
+input_sample <- genSample(UMobject = salinityMUM, n = MC, samplemethod = "ugs", p = 0, nmax = 20, asList = FALSE, 
+                          set = list(nocheck = 1), debug.level = -1) 
 
 
 #compute input sample statistics
