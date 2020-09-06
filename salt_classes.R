@@ -211,7 +211,7 @@ EC1 <- as(EC_030, "SpatialPixelsDataFrame")
  setwd("G:/GSP/predictions/acc_unc")
 
 ##bring in uncertainty layers and stack them
-unc <- c(EC_unc  = "ec030_predsd.tif", 
+unc <- c(EC_unc  = "ec030_uncert_predsd.tif", 
          PH_unc  = "ph_030_uncert_predsd.tif", 
          ESP_unc = "notr_esp_030_t25_nomlra_prun_sd_nafw.tif"
          )
@@ -254,6 +254,7 @@ b1 <- nrow(EC11)
 c1 <- trunc(.01*b1)
 jj1 <- EC11[sample(b1,c1),]
 ec_030_vrm <- autofitVariogram(EC~1,jj1)
+plot(ec_030_vrm)
 
 #ph_030_sp <- as(rs_030["PH_030"], "SpatialPointsDataFrame")
 #b2 <- nrow(ph_030_sp)
@@ -263,10 +264,10 @@ ec_030_vrm <- autofitVariogram(EC~1,jj1)
 
 PH11 <- as(PH1, "SpatialPointsDataFrame")
 b2 <- nrow(PH11)
-c2 <- trunc(.01*c2)
+c2 <- trunc(.01*b2)
 jj2 <- PH11[sample(b2,c2),]
 ph_030_vrm <- autofitVariogram(PH~1,jj2)
-
+plot(ph_030_vrm)
 
 #esp_030_sp <- as(rs_030["ESP_030t"], "SpatialPointsDataFrame")
 #b3 <- nrow(esp_030_sp)
@@ -276,26 +277,28 @@ ph_030_vrm <- autofitVariogram(PH~1,jj2)
 
 ESP11 <- as(ESP1, "SpatialPointsDataFrame")
 b3 <- nrow(ESP11)
-c3 <- trunc(.01*c3)
+c3 <- trunc(.01*b3)
 jj3 <- ESP11[sample(b3,c3),]
 esp_030_vrm <- autofitVariogram(ESP~1,jj3)
+plot(esp_030_vrm)
 
 # plot autocorrelation info
 library(spup)
 
+## all crm objects have ranges = 20000 like example in manual but that is NOT the range output by the vrm; all ranges have to match for genSample()
 plot(ec_030_vrm) # Note the spatial correlation model and the value of Range parameter
-acf(ec_030_sp$EC_030t) ##Also note the acf0 (at lag 0)
-ec_030_crm <- makeCRM(acf0 = 1, range = 20000, model = "Sph") #change acf0 to 0.85 to match manual??
+acf(EC11$EC) ##Also note the acf0 (at lag 0)
+ec_030_crm <- makeCRM(acf0 = 1, range = 20000, model = "Ste") #variogram model is actually "Ste" but then it won't plot...?? object 'xlim_factor' not found ; 
 plot(ec_030_crm, main = "EC 30cm correlogram")
 
 plot(ph_030_vrm)
-acf(ph_030_sp$PH_030)
-ph_030_crm <- makeCRM(acf0 = 1, range = 20000, model = "Sph") #how to differentiate from Ec?
+acf(PH11$PH)
+ph_030_crm <- makeCRM(acf0 = 1, range = 20000, model = "Ste") 
 plot(ph_030_crm, main = "PH 30cm correlogram")
 
 plot(esp_030_vrm)
-acf(esp_030_sp$ESP_030t)
-esp_030_crm <- makeCRM(acf0 = 1, range = 20000, model = "Sph")
+acf(ESP11$ESP)
+esp_030_crm <- makeCRM(acf0 = 1, range = 20000, model = "Ste")
 plot(esp_030_crm, main = "ESP 30cm correlogram")
 
 ###################
@@ -326,22 +329,45 @@ class(ESP_UM)
 
 cor(values(ECte),values(PHde), use = "complete.obs");cor(values(ECte), values(ESPt), use = "complete.obs");cor(values(PHde), values(ESPt), use = "complete.obs")
 
-salinityMUM = defineMUM(UMlist = list(EC_UM, PH_UM ,ESP_UM),
-                        cormatrix = matrix(c(1, cor(values(ECte), values(PHde), use = "complete.obs"),
-                                             cor(values(ECte),values(ESPt), use = "complete.obs"),
-                                             cor(values(ECte), values(PHde), use = "complete.obs"), 1,
-                                           cor(values(PHde), values(ESPt), use = "complete.obs"),
-                        cor(values(ECte), values(ESPt), use = "complete.obs"), cor(values(PHde), values(ESPt), use = "complete.obs"),1), nrow = 3, ncol = 3))
+#salinityMUM = defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM),
+#                        cormatrix = matrix(c(1, cor(values(ECte), values(PHde), use = "complete.obs"),
+#                                             cor(values(ECte),values(ESPt), use = "complete.obs"),
+#                                             cor(values(ECte), values(PHde), use = "complete.obs"), 1,
+#                                           cor(values(PHde), values(ESPt), use = "complete.obs"),
+#                        cor(values(ECte), values(ESPt), use = "complete.obs"), cor(values(PHde), values(ESPt), use = "complete.obs"##),1), nrow = 3, ncol = 3))
 
 
 
-class(salinityMUM)
+#class(salinityMUM)
+
+###try to fix "coefficient matrix not positive definite" error in gensample()
+
+cormatrix2 = matrix(c(1, cor(values(ECte), values(PHde), use = "complete.obs"),
+                     cor(values(ECte),values(ESPt), use = "complete.obs"),
+                     cor(values(ECte), values(PHde), use = "complete.obs"), 1,
+                     cor(values(PHde), values(ESPt), use = "complete.obs"),
+                     cor(values(ECte), values(ESPt), use = "complete.obs"), cor(values(PHde), values(ESPt), use = "complete.obs"),1), nrow = 3, ncol = 3)
+cormatrix2
+eigen(cormatrix2)
+
+library(corpcor)
+is.positive.definite(cormatrix2)
+
+salinityMUM = defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM),
+                        cormatrix = cormatrix2)
 
 
 ##create MC realizations from the distributions
 MC <- 100
+
+####Get error: In predict.gstat(object = g, newdata = mask, nsim = n, debug.leve = debug.leve) :
+#               No Intrinsic Correlation or Linear Model of Coregionalization found
+#               Reason: coefficient matrix not positive definite
+#               BUT ALL EIGENVALUES OF THE CORRELATION MATRIX ARE POSITIVE SO WHAT IS GOING ON HERE
+
 input_sample <- genSample(UMobject = salinityMUM, n = MC, samplemethod = "ugs", p = 0, nmax = 20, asList = FALSE, 
                           set = list(nocheck = 1), debug.level = -1) 
+
 
 
 #compute input sample statistics
