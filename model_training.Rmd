@@ -560,9 +560,9 @@ data2 <- data2[idx, ]
 
 ec_pred_uncert30 <- predUncertain(data2, rs5, 3, 95, "ranger")
 
-writeRaster(ec_pred_uncert30$pred_width,"K:/GSP/modeling/predict/final_maps/ec030_predwidth.tif", overwrite = TRUE )
+writeRaster(ec_pred_uncert30$pred_width,"K:/GSP/modeling/predict/final_maps/ec030_predwidth2.tif", overwrite = TRUE )
 
-writeRaster(ec_pred_uncert30$pred_sd,"K:/GSP/modeling/predict/final_maps/ec030_predsd.tif", overwrite = TRUE )
+writeRaster(ec_pred_uncert30$pred_sd,"K:/GSP/modeling/predict/final_maps/ec030_predsd2.tif", overwrite = TRUE )
 
 ##30-100cm
 vars <- ec_rf_100$finalModel$forest$independent.variable.names
