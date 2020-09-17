@@ -42,11 +42,11 @@ f <- c(PH_030 = "ph_030_qrf_mlra_pm_NULL_final4_fill_mask.tif",
 #f <- c("ec_030_bt_nomlra_wstatspm.tif", "cv_esp_030_nomlra_statspm.tif", "ph_030_qrf_mlra_pm_NULL_final2.tif") #change file names as needed
 rs <- readAll(stack(f))
 rs <- projectRaster(rs, crs = "+init=epsg:5070", progress = "text")
-
 rs$EC_030t  <- log(rs$EC_030 + 0.1)
 rs$ESP_030t <- log(rs$ESP_030 + 0.1)
 rs$EC_100t  <- log(rs$EC_100 + 0.1)
 rs$ESP_100t <- log(rs$ESP_100 + 0.1)
+rs <- readAll(rs)
 
 
 rs #inspect range in values
@@ -215,8 +215,8 @@ Kappa(table(soilv$sa, soilv$sa1))
 # #NEED UNCERTAINTY MAPS from the predictions
 
 
-setwd("G:/GSP/predictions/acc_unc")
-# setwd("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert")
+# setwd("G:/GSP/predictions/acc_unc")
+setwd("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert")
  
  
 ##bring in uncertainty layers and stack them
@@ -225,8 +225,9 @@ unc <- c(EC_unc  = "ec030_uncert_predsd.tif",
          ESP_unc = "notr_esp_030_t25_nomlra_prun_sd_nafw.tif"
          )
 uncst <- projectRaster(readAll(stack(unc)), crs = "+init=epsg:5070", progress = "text")
-uncst$EC_unct <- log(uncst$EC_unc + 0.1)
+uncst$EC_unct  <- log(uncst$EC_unc + 0.1)
 uncst$ESP_unct <- log(uncst$ESP_unc +0.1)
+uncst <- readAll(uncst)
 
 uncst2 <- as(uncst, "SpatialGridDataFrame")
 uncst2
@@ -298,115 +299,169 @@ library(spup)
 
 ## all crm objects have ranges = 20000 like example in manual but that is NOT the range output by the vrm; all ranges have to match for genSample()
 plot(ec_030_vrm) # Note the spatial correlation model and the value of Range parameter
-acf(EC11$EC) ##Also note the acf0 (at lag 0)
-ec_030_crm <- makeCRM(acf0 = 0.03, range = 20000, model = "Ste") #variogram model is actually "Ste" but then it won't plot...?? object 'xlim_factor' not found ; 
+acf(EC11$EC_030t) ##Also note the acf0 (at lag 0)
+ec_030_crm <- makeCRM(acf0 = 0.9, range = 20000, model = "Sph") #variogram model is actually "Ste" but then it won't plot...?? object 'xlim_factor' not found ; 
 plot(ec_030_crm, main = "EC 30cm correlogram")
 
 plot(ph_030_vrm)
 acf(PH11$PH_030)
-ph_030_crm <- makeCRM(acf0 = 0.06, range = 20000, model = "Ste") 
+ph_030_crm <- makeCRM(acf0 = 0.9, range = 20000, model = "Sph") 
 plot(ph_030_crm, main = "PH 30cm correlogram")
 
 plot(esp_030_vrm)
-acf(ESP11$ESP_030)
-esp_030_crm <- makeCRM(acf0 = 0.04, range = 20000, model = "Ste")
+acf(ESP11$ESP_030t)
+esp_030_crm <- makeCRM(acf0 = 0.9, range = 20000, model = "Sph")
 plot(esp_030_crm, main = "ESP 30cm correlogram")
 
 
-save(ec_030_vrm, ph_030_vrm, esp_030_vrm, 
-     ec_030_crm, ph_030_crm, esp_030_crm,
-     file = "gsp_variograms.RData"
-     )
+# save(ec_030_vrm, ph_030_vrm, esp_030_vrm,
+#      ec_030_crm, ph_030_crm, esp_030_crm,
+#      file = "gsp_variograms.RData"
+#      )
+load(file = "gsp_variograms.RData")
 
 ###################
 
 
 ## Develop input marginal and joint multivariate uncertainty models for defining MC models
 ## ERROR Distribution parameters must be objects of the same class (change ECte to SpatialGridDataFrame?)
-EC_UM <- defineUM(distribution = "norm", 
-                  distr_param  = c(rs$EC_030t, uncst$EC_unct), 
-                  crm          = ec_030_crm, 
-                  id           = "EC"
-                  )
-PH_UM <- defineUM(distribution = "norm",
-                  distr_param  = c(rs$PH_030, uncst$PH_unc),
-                  crm          = ph_030_crm,
-                  id = "PH"
-                  )
-ESP_UM <- defineUM(distribution = "norm",
-                   distr_param  = c(rs$ESP_030t, uncst$ESP_unct),
-                   crm          = esp_030_crm,
-                   id           = "ESP"
-                   )
-class(EC_UM)
-class(PH_UM)
-class(ESP_UM)
-
-#get the correlation values and use them in defining the Monte Carlo Uncertainty Mode (MUM)
-
-test_ex <- sampleRandom(rs, size = 10000, na.rm = TRUE, sp = TRUE)@data
-cm <- cor(test_ex[c(7, 1, 8)])
-
-
-#salinityMUM = defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM),
-#                        cormatrix = matrix(c(1, cor(values(ECte), values(PHde), use = "complete.obs"),
-#                                             cor(values(ECte),values(ESPt), use = "complete.obs"),
-#                                             cor(values(ECte), values(PHde), use = "complete.obs"), 1,
-#                                           cor(values(PHde), values(ESPt), use = "complete.obs"),
-#                        cor(values(ECte), values(ESPt), use = "complete.obs"), cor(values(PHde), values(ESPt), use = "complete.obs"##),1), nrow = 3, ncol = 3))
-
-
-
-
-#class(salinityMUM)
-
-###try to fix "coefficient matrix not positive definite" error in gensample()
-
-# cormatrix2 = matrix(c(1, cor(values(ECte), values(PHde), use = "complete.obs"),
-#                      cor(values(ECte),values(ESPt), use = "complete.obs"),
-#                      cor(values(ECte), values(PHde), use = "complete.obs"), 1,
-#                      cor(values(PHde), values(ESPt), use = "complete.obs"),
-#                      cor(values(ECte), values(ESPt), use = "complete.obs"), cor(values(PHde), values(ESPt), use = "complete.obs"),1), nrow = 3, ncol = 3)
-# cormatrix2
-# eigen(cormatrix2)
-# 
-# library(corpcor)
-# is.positive.definite(cormatrix2)
-
-salinityMUM <- defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM),
-                         cormatrix = cm
-                         )
-
 
 ##create MC realizations from the distributions
 MC <- 100
 
-####Get error: In predict.gstat(object = g, newdata = mask, nsim = n, debug.leve = debug.leve) :
-#               No Intrinsic Correlation or Linear Model of Coregionalization found
-#               Reason: coefficient matrix not positive definite
-#               BUT ALL EIGENVALUES OF THE CORRELATION MATRIX ARE POSITIVE SO WHAT IS GOING ON HERE
+test_ex <- sampleRandom(rs, size = 10000, na.rm = TRUE, sp = TRUE)@data
+cm <- cor(test_ex[c(7, 1, 8)])
 
-input_sample <- genSample(UMobject = salinityMUM, n = MC, samplemethod = "ugs", p = 0, nmax = 20, asList = FALSE, 
-                          set = list(nocheck = 1), debug.level = -1) 
-
+sa <- read_sf("D:/geodata/soils/SSURGO_CONUS_FY19.gdb", layer = "SAPOLYGON")
+tiles <- st_as_sf(st_make_grid(sa, n = c(6, 6)))
+tiles$tile <- 1:length(tiles)
 
 
-#compute input sample statistics
-EC_sample <- input_sample[[1:MC]]
-PH_sample <- input_sample[[(MC+1):(2*MC)]]
-ESP_sample <- input_sample[[(2*MC+1):(3*MC)]]
-EC_sample_mean <- mean(EC_sample)
-PH_sample_mean <- mean(PH_sample)
-ESP_sample_mean <- mean(ESP_sample)
-EC_sample_sd <- calc(EC_sample, fun = sd)
-PH_sample_sd <- calc(PH_sample, fun = sd)
-ESP_sample_sd <- calc(ESP_sample, fun = sd)
+# compute MC simulation over tiles
+lapply(1:34, function(x) {
+    
+    cat(as.character(Sys.time()), x, "\n")
+    
+    tiles_sub    <- tiles[tiles$tile == x, ]
+    tiles_sub    <- st_buffer(tiles_sub, 1e4 * 10)
+    rs_sub    <- crop(rs, tiles_sub)
+    uncst_sub <- crop(uncst, tiles_sub)
+    
+    EC_UM <- defineUM(distribution = "norm", 
+                      distr_param  = c(rs_sub$EC_030t, uncst_sub$EC_unct), 
+                      crm          = ec_030_crm, 
+                      id           = "EC"
+                      )
+    PH_UM <- defineUM(distribution = "norm",
+                      distr_param  = c(rs_sub$PH_030, uncst_sub$PH_unc),
+                      crm          = ph_030_crm,
+                      id = "PH"
+                      )
+    ESP_UM <- defineUM(distribution = "norm",
+                       distr_param  = c(rs_sub$ESP_030t, uncst_sub$ESP_unct),
+                       crm          = esp_030_crm,
+                       id           = "ESP"
+                       )
+    MC <- 100
+    salinityMUM <- defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM),
+                             cormatrix = cm
+                             )
+    input_sample <- genSample(UMobject = salinityMUM, 
+                              n = MC, 
+                              samplemethod = "ugs", 
+                              nmax = 20, 
+                              asList = FALSE, 
+                              debug.level = -1
+                              )
+    save(input_sample, file = paste0("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert/input_sample_", x, ".RData"))
+})
+    
+    
 
-#plot the realizations
-par(mfrow=c(2,2),mar = c(1, 1, 2, 2), mgp = c(1.7, 0.5, 0), oma = c(0, 0, 0, 1), + las = 1, cex.main = 1, tcl = -0.2, cex.axis = 0.8, cex.lab = 0.8)
-plot(EC_sample_mean, main = "Mean of ECt realizations", xaxt = "n", yaxt = "n")
-plot(PH_sample_mean, main = "Mean of PHt realizations", xaxt = "n", yaxt = "n")
-plot(ESP_sample_mean, main = "Mean of ESPt realizations", xaxt = "n", yaxt = "n")
+# iterate over tiles and compute input sample statistics
+
+lapply(1:34, function(x){
+    
+    cat(as.character(Sys.time()), x, "\n")
+    
+    load(file = paste0("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert/input_sample_", x, ".RData"))
+    
+    EC_sample <- input_sample[[1:MC]]
+    PH_sample <- input_sample[[(MC+1):(2*MC)]]
+    ESP_sample <- input_sample[[(2*MC+1):(3*MC)]]
+    
+    EC_sample_mean  <- mean(EC_sample)
+    PH_sample_mean  <- mean(PH_sample)
+    ESP_sample_mean <- mean(ESP_sample)
+    
+    EC_sample_sd  <- calc(EC_sample,  fun = sd)
+    PH_sample_sd  <- calc(PH_sample,  fun = sd)
+    ESP_sample_sd <- calc(ESP_sample, fun = sd)
+
+    st <- stack(EC_sample_mean, PH_sample_mean, ESP_sample_mean,
+                EC_sample_sd,   PH_sample_sd,   ESP_sample_mean
+                )
+    
+    writeRaster(st, filename = paste0("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert/gsp_sample_st_", x, ".tif"), overwrite = TRUE)
+    })
+
+
+
+# load MC iterations
+mc_st <- lapply(1:34, function(x) {
+    stack(paste0("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert/gsp_sample_st_", x, ".tif"))
+    })
+
+
+# mosaic and calculate averages
+ec_avg_l <- lapply(mc_st, function(x) x[[1]])
+ec_avg_l <- c(ec_avg_l, fun = mean, na.rm = TRUE, progress = "text")
+EC_sample_mean <- do.call(mosaic, ec_avg_l)
+EC_sample_mean <- calc(EC_sample_mean, function(x) exp(x) - 0.1)
+writeRaster(EC_sample_mean, filename = "ec_mc_avg.tif", overwrite = TRUE)
+
+ph_avg_l <- lapply(mc_st, function(x) x[[2]])
+ph_avg_l <- c(ph_avg_l, fun = mean, na.rm = TRUE, progress = "text")
+PH_sample_mean <- do.call(mosaic, ph_avg_l)
+writeRaster(PH_sample_mean, filename = "ph_mc_avg.tif", overwrite = TRUE)
+
+esp_avg_l <- lapply(mc_st, function(x) x[[1]])
+esp_avg_l <- c(esp_avg_l, fun = mean, na.rm = TRUE, progress = "text")
+ESP_sample_mean <- do.call(mosaic, esp_avg_l)
+ESP_sample_mean <- calc(ESP_sample_mean, function(x) exp(x) - 0.1)
+writeRaster(ESP_sample_mean, filename = "esp_mc_avg.tif", overwrite = TRUE)
+
+
+# mosaic and calculate standard deviations
+ec_sd_l <- lapply(mc_st, function(x) x[[4]])
+ec_sd_l <- c(ec_sd_l, fun = mean, na.rm = TRUE, progress = "text")
+ec_sd_r <- do.call(mosaic, ec_sd_l)
+ec_sd_r <- calc(ec_sd_r, function(x) exp(x) - 0.1)
+writeRaster(ec_sd_r, filename = "ec_mc_sd.tif", overwrite = TRUE)
+
+ph_sd_l <- lapply(mc_st, function(x) x[[5]])
+ph_sd_l <- c(ph_sd_l, fun = mean, na.rm = TRUE, progress = "text")
+ph_sd_r <- do.call(mosaic, ph_sd_l)
+writeRaster(ph_sd_r, filename = "ph_mc_sd.tif", overwrite = TRUE)
+
+esp_sd_l <- lapply(mc_st, function(x) x[[6]])
+esp_sd_l <- c(esp_sd_l, fun = mean, na.rm = TRUE, progress = "text")
+esp_sd_r <- do.call(mosaic, esp_sd_l)
+esp_sd_r <- calc(esp_sd_r, function(x) exp(x) - 0.1)
+writeRaster(esp_sd_r, filename = "esp_mc_sd.tif", overwrite = TRUE)
+
+
+# plot the realizations
+tm_shape(EC_sample_mean) + 
+    tm_raster(palette = rev(viridis::viridis(5)), breaks = c(0, 2, 4, 8, 16, 300), title = "EC") + 
+    tm_layout(main.title = "Mean of EC realizations", legend.outside = TRUE)
+tm_shape(PH_sample_mean) + 
+    tm_raster(palette = rev(viridis::viridis(11)), breaks = c(0, 3.5, 4.5, 5.1, 5.6, 6.1, 6.6, 7.4, 7.9, 8.5, 9, 14), title = "pH") + 
+    tm_layout(main.title = "Mean of pH realizations", legend.outside = TRUE)
+tm_shape(ESP_sample_mean) + 
+    tm_raster(palette = rev(viridis::viridis(4)), breaks = round(quantile(ESP_sample_mean, p = c(0, 0.1, 0.5, 0.9, 1)), 2), title = "ESP") + 
+    tm_layout(main.title = "Mean of ESP realizations", legend.outside = TRUE)
+
 
 ##uncertainty propagation through the classification model
 Salinity_model_raster <- function (EC1,PH1,ESP1){
