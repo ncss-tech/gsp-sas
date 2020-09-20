@@ -196,7 +196,12 @@ vars <- c("ec_ptf.000_030_cm",
           other_vars,
           ssurgo_vars
           )
-train2 <- na.exclude(train[vars])
+train30 <- na.exclude(train[vars])
+
+#transform independent variable
+hist(train30$ec_ptf.000_030_cm)
+ec30t = log(train30$ec_ptf.000_030_cm + 0.1)
+hist(ec30t)
 
 #for all confirmed 
 #cov_list <- setNames(split(cov_ec0_c, seq(nrow(cov_ec0_c))), rownames(cov_ec0_c))
@@ -206,9 +211,9 @@ train2 <- na.exclude(train[vars])
 #train2 <- na.exclude(train[vars])
 
 #(1) all confirmed variables
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[fs_b_stats$ec_ptf.000_030_cm$decision == "Confirmed"])
+idx <- which(names(train30) %in% fs_b_stats$ec_ptf.000_030_cm$variable[fs_b_stats$ec_ptf.000_030_cm$decision == "Confirmed"])
 #test model; no cv
-ec030_rf_all <- ranger(y = train2$ec_ptf.000_030_cm, x = train2[idx], 
+ec030_rf_all <- ranger(y = ec30t, x = train30[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
                     respect.unordered.factors = NULL,
@@ -219,9 +224,9 @@ r2_ec030_all <- ec030_rf_all$r.squared
 
 #(2) half of confirmed variables
 fs_b_stats$ec_ptf.000_030_cm #to look at variables in ranked order
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[1:43])
+idx <- which(names(train30) %in% fs_b_stats$ec_ptf.000_030_cm$variable[1:44])
 #test model; no cv
-ec030_rf_half <- ranger(y = train2$ec_ptf.000_030_cm, x = train2[idx], 
+ec030_rf_half <- ranger(y = ec30t, x = train30[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
                     respect.unordered.factors = NULL,
@@ -231,9 +236,9 @@ ec030_rf_half <- ranger(y = train2$ec_ptf.000_030_cm, x = train2[idx],
 r2_ec030_half <- ec030_rf_half$r.squared
 
 #(3) variables based on boruta plot 
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[1:14])
+idx <- which(names(train30) %in% fs_b_stats$ec_ptf.000_030_cm$variable[1:18])
 #test model; no cv
-ec030_rf_top <- ranger(y = train2$ec_ptf.000_030_cm, x = train2[idx], 
+ec030_rf_top <- ranger(y = ec30t, x = train30[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
                     respect.unordered.factors = NULL,
@@ -243,9 +248,9 @@ ec030_rf_top <- ranger(y = train2$ec_ptf.000_030_cm, x = train2[idx],
 r2_ec030_top <- ec030_rf_top$r.squared
 
 #(4) top 25 variables
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.000_030_cm$variable[1:25])
+idx <- which(names(train30) %in% fs_b_stats$ec_ptf.000_030_cm$variable[1:25])
 #test model; no cv
-ec030_rf_top25 <- ranger(y = train2$ec_ptf.000_030_cm, x = train2[idx], 
+ec030_rf_top25 <- ranger(y = ec30t, x = train30[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
                     respect.unordered.factors = NULL,
@@ -261,12 +266,17 @@ vars <- c("ec_ptf.030_100_cm",
           other_vars,
           ssurgo_vars
           )
-train2 <- na.exclude(train[vars])
+train100 <- na.exclude(train[vars])
+
+#transform independent variable
+hist(train100$ec_ptf.030_100_cm)
+ec100t = log(train100$ec_ptf.030_100_cm + 0.1)
+hist(ec100t)
 
 #(1) all confirmed variables
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[fs_b_stats$ec_ptf.030_100_cm$decision == "Confirmed"])
+idx <- which(names(train100) %in% fs_b_stats$ec_ptf.030_100_cm$variable[fs_b_stats$ec_ptf.030_100_cm$decision == "Confirmed"])
 #test model; no cv
-ec100_rf_all <- ranger(y = train2$ec_ptf.030_100_cm, x = train2[idx], 
+ec100_rf_all <- ranger(y = ec100t, x = train100[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
                     respect.unordered.factors = NULL,
@@ -277,9 +287,9 @@ r2_ec100_all <- ec100_rf_all$r.squared
 
 #(2) half of confirmed variables
 fs_b_stats$ec_ptf.030_100_cm #to look at variables in ranked order
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[1:43])
+idx <- which(names(train100) %in% fs_b_stats$ec_ptf.030_100_cm$variable[1:43])
 #test model; no cv
-ec100_rf_half <- ranger(y = train2$ec_ptf.030_100_cm, x = train2[idx], 
+ec100_rf_half <- ranger(y = ec100t, x = train100[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
                     respect.unordered.factors = NULL,
@@ -289,9 +299,9 @@ ec100_rf_half <- ranger(y = train2$ec_ptf.030_100_cm, x = train2[idx],
 r2_ec100_half <- ec100_rf_half$r.squared
 
 #(3) variables based on boruta plot 
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[1:19])
+idx <- which(names(train100) %in% fs_b_stats$ec_ptf.030_100_cm$variable[1:18])
 #test model; no cv
-ec100_rf_top <- ranger(y = train2$ec_ptf.030_100_cm, x = train2[idx], 
+ec100_rf_top <- ranger(y = ec100t, x = train100[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
                     respect.unordered.factors = NULL,
@@ -301,9 +311,9 @@ ec100_rf_top <- ranger(y = train2$ec_ptf.030_100_cm, x = train2[idx],
 r2_ec100_top <- ec100_rf_top$r.squared
 
 #(4) top 25 variables
-idx <- which(names(train2) %in% fs_b_stats$ec_ptf.030_100_cm$variable[1:25])
+idx <- which(names(train100) %in% fs_b_stats$ec_ptf.030_100_cm$variable[1:25])
 #test model; no cv
-ec100_rf_top25 <- ranger(y = train2$ec_ptf.030_100_cm, x = train2[idx], 
+ec100_rf_top25 <- ranger(y = ec100t, x = train100[idx], 
                     quantreg = TRUE, 
                     importance = "permutation",
                     respect.unordered.factors = NULL,
@@ -316,20 +326,20 @@ r2_ec100_top25 <- ec100_rf_top$r.squared
 ####################model building with cross validation##########################
 ##0-30cm##
 #filter training data 
-vars <- c("ec_ptf.000_030_cm",
-          isric_vars, 
-          other_vars,
-          ssurgo_vars
-          )
-train1 <- na.exclude(train[vars])
+#vars <- c("ec_ptf.000_030_cm",
+#          isric_vars, 
+#          other_vars,
+#          ssurgo_vars
+#          )
+#train1 <- na.exclude(train[vars])
 
 #qrf w/cv
-idx <- which(names(train1) %in% 
-               c(as.character(fs_b_stats$ec_ptf.000_030_cm$variable[1:11]), 
-               c(as.character(fs_b_stats$ec_ptf.000_030_cm$variable[13:14]),
+idx <- which(names(train30) %in% 
+               c(as.character(fs_b_stats$ec_ptf.000_030_cm$variable[1:29]), 
+               c(as.character(fs_b_stats$ec_ptf.000_030_cm$variable[31:44]),
                "statsgo_pmkind3"))) 
 
-ec_rf_030 <- train(y = train1$ec_ptf.000_030_cm, x = train1[idx], 
+ec_rf_030 <- train(y = ec30t, x = train30[idx], 
                method = "ranger", quantreg = TRUE, 
                importance = "permutation", 
                respect.unordered.factors = NULL, #needed if mlra is in the variables
@@ -340,25 +350,25 @@ ec_rf_030 <- train(y = train1$ec_ptf.000_030_cm, x = train1[idx],
 ec_rf_030$finalModel
 
 # variable importance plots
-vip::vip(ec_rf_030, 13)
+vip::vip(ec_rf_030, 45)
 
 
 ##30-100cm##
 #filtering training data
-vars <- c("ec_ptf.030_100_cm",
-          isric_vars, 
-          other_vars,
-          ssurgo_vars
-          )
-train2 <- na.exclude(train[vars])
+#vars <- c("ec_ptf.030_100_cm",
+#         isric_vars, 
+#         other_vars,
+#          ssurgo_vars
+#          )
+#train2 <- na.exclude(train[vars])
 
 #qrf w/cv
-idx <- which(names(train2) %in% 
-               c(as.character(fs_b_stats$ec_ptf.030_100_cm$variable[1:17]),   
-              c(as.character(fs_b_stats$ec_ptf.030_100_cm$variable[19]), 
+idx <- which(names(train100) %in% 
+               c(as.character(fs_b_stats$ec_ptf.030_100_cm$variable[1:39]),   
+              c(as.character(fs_b_stats$ec_ptf.030_100_cm$variable[41:43]), 
                "statsgo_pmkind3")))
 
-ec_rf_100 <- train(y = train2$ec_ptf.030_100_cm, x = train2[idx], 
+ec_rf_100 <- train(y = ec100t, x = train100[idx], 
                method = "ranger", quantreg = TRUE, 
                importance = "permutation", 
                respect.unordered.factors = NULL, #needed if mlra is in the variables
@@ -369,12 +379,12 @@ ec_rf_100 <- train(y = train2$ec_ptf.030_100_cm, x = train2[idx],
 ec_rf_100$finalModel
 
 # variable importance plots
-vip::vip(ec_rf_100, 44)
+vip::vip(ec_rf_100, 45)
 
 print(ec_rf_030)
 print(ec_rf_100)
 
-save(train1, train2, ec_rf_030, ec_rf_100,file = "K:/GSP/modeling/predict/ec_rf.RData")
+save(train30, train100, ec_rf_030, ec_rf_100,file = "K:/GSP/modeling/predict/ec_rf.RData")
 
 
 #####################predictions############################
@@ -388,34 +398,34 @@ idx <- which(
   )
 rs2 <- rs[[idx]]
 
-ec_030_r <- predict(rs2, ec_rf_030$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "K:/GSP/modeling/predict/ec_030.tif")
+ec_030_r <- predict(rs2, ec_rf_030$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "K:/GSP/modeling/predict/ec030t.tif")
 
 idx <- which(
   names(rs) %in% ec_rf_100$finalModel$forest$independent.variable.names
   )
 rs3 <- rs[[idx]]
 
-ec_100_r <- predict(rs3, ec_rf_100$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "K:/GSP/modeling/predict/ec_100.tif")
+ec_100_r <- predict(rs3, ec_rf_100$finalModel, fun = predfun, index = 1, progress = "text", overwrite = TRUE, filename = "K:/GSP/modeling/predict/ec100t.tif")
 
 ##back-transform values
-#ec_030_r_bt <- calc(ec_030_r, function(x) exp(x) - 0.1)
-#writeRaster(ec_030_r_bt, "K:/GSP/modeling/predict/ec_030_bt.tif", overwrite = TRUE)
+ec_030_r_bt <- calc(ec_030_r, function(x) exp(x) - 0.1)
+writeRaster(ec_030_r_bt, "K:/GSP/modeling/predict/ec030bt.tif", overwrite = TRUE)
 
-#ec_100_r_bt <- calc(ec_100_r, function(x) exp(x) - 0.1)
-#writeRaster(ec_100_r_bt, "K:/GSP/modeling/predict/ec_100_bt.tif", overwrite = TRUE)
+ec_100_r_bt <- calc(ec_100_r, function(x) exp(x) - 0.1)
+writeRaster(ec_100_r_bt, "K:/GSP/modeling/predict/ec100bt.tif", overwrite = TRUE)
 
 
 ##fix nodata holes and water as NA in final predictions
 library(raster)
 
-ec_030_r <- raster("K:/GSP/modeling/predict/ec_030.tif")
-ec_100_r <- raster("K:/GSP/modeling/predict/ec_100.tif")
+ec_030_r <- raster("K:/GSP/modeling/predict/ec030bt.tif")
+ec_100_r <- raster("K:/GSP/modeling/predict/ec100bt.tif")
 
 ec_030_r0 <- raster("K:/GSP/modeling/covariates/excluded/ssurgo/ssurgo_ptec30_rs_med.tif")
 ec_100_r0 <- raster("K:/GSP/modeling/covariates/excluded/ssurgo/ssurgo_ptec100_rs_med.tif")
 
-ec_030_r2 <- merge(ec_030_r, ec_030_r0, overlap = TRUE, filename = "K:/GSP/modeling/predict/final_maps/ec030_fill.tif", progress = "text", overwrite = TRUE)
-ec_100_r2 <- merge(ec_100_r, ec_100_r0, overlap = TRUE, filename = "K:/GSP/modeling/predict/final_maps/ec100_fill.tif", progress = "text", overwrite = TRUE)
+ec_030_r2 <- merge(ec_030_r, ec_030_r0, overlap = TRUE, filename = "K:/GSP/modeling/predict/final_maps/ec030bt_fill.tif", progress = "text", overwrite = TRUE)
+ec_100_r2 <- merge(ec_100_r, ec_100_r0, overlap = TRUE, filename = "K:/GSP/modeling/predict/final_maps/ec100bt_fill.tif", progress = "text", overwrite = TRUE)
 
 # mask
 lc <- raster("K:/GSP/1km_covariates/isric/CONUS/LCEE10__CONUS.tif")
@@ -429,17 +439,17 @@ m <- c(
 m <- matrix(m, ncol = 3, byrow = TRUE)
 
 lc <- reclassify(lc, m, filename = "test.tif", overwrite = TRUE)
-mask(ec_030_r2, lc, filename = "K:/GSP/modeling/predict/final_maps/ec030_fill_mask.tif", overwrite = TRUE)
+mask(ec_030_r2, lc, filename = "K:/GSP/modeling/predict/final_maps/ec030bt_fill_mask.tif", overwrite = TRUE)
 
-mask(ec_100_r2, lc, filename = "K:/GSP/modeling/predict/final_maps/ec100_fill_mask.tif", overwrite = TRUE)
+mask(ec_100_r2, lc, filename = "K:/GSP/modeling/predict/final_maps/ec100bt_fill_mask.tif", overwrite = TRUE)
 
 #evaluate results
-ec_30f <- raster("K:/GSP/modeling/predict/final_maps/ec030_fill_mask.tif")
+ec_30f <- raster("K:/GSP/modeling/predict/final_maps/ec030bt_fill_mask.tif")
 na30 <- is.na(ec_30f) 
 summary(na30@data@values==TRUE)
 plot(na30)
 
-ec_100f <- raster("K:/GSP/modeling/predict/final_maps/ec100_fill_mask.tif")
+ec_100f <- raster("K:/GSP/modeling/predict/final_maps/ec100bt_fill_mask.tif")
 na100 <- is.na(ec_100f) 
 summary(na100@data@values==TRUE)
 plot(na100)
@@ -468,7 +478,7 @@ plot(na100)
 
 ```
 
-# Model Accracy and Uncertainty
+# Model Accuracy and Uncertainty
 
 ```{r}
 
@@ -525,8 +535,8 @@ sapply(pkg, require, character.only = TRUE)
 
 test_sf <- s_mps_sf[s_mps_sf$pedon_key %in% clhs_pkey, ]
 test_sp <- as(test_sf, "Spatial")
-vars <- c(ec_030 = "K:/GSP/modeling/predict/final_maps/ec030_fill_mask.tif",
-          ec_100 = "K:/GSP/modeling/predict/final_maps/ec100_fill_mask.tif")
+vars <- c(ec_030 = "K:/GSP/modeling/predict/final_maps/ec030bt_fill_mask.tif",
+          ec_100 = "K:/GSP/modeling/predict/final_maps/ec100bt_fill_mask.tif")
 rs4 <- stack(vars)
 rs4 <- as(rs4, "SpatialGridDataFrame")
 
@@ -560,9 +570,9 @@ data2 <- data2[idx, ]
 
 ec_pred_uncert30 <- predUncertain(data2, rs5, 3, 95, "ranger")
 
-writeRaster(ec_pred_uncert30$pred_width,"K:/GSP/modeling/predict/final_maps/ec030_predwidth2.tif", overwrite = TRUE )
+writeRaster(ec_pred_uncert30$pred_width,"K:/GSP/modeling/predict/final_maps/ec030_predwidth.tif", overwrite = TRUE )
 
-writeRaster(ec_pred_uncert30$pred_sd,"K:/GSP/modeling/predict/final_maps/ec030_predsd2.tif", overwrite = TRUE )
+writeRaster(ec_pred_uncert30$pred_sd,"K:/GSP/modeling/predict/final_maps/ec030_predsd.tif", overwrite = TRUE )
 
 ##30-100cm
 vars <- ec_rf_100$finalModel$forest$independent.variable.names
@@ -582,7 +592,7 @@ writeRaster(ec_pred_uncert100$pred_width,"K:/GSP/modeling/predict/final_maps/ec1
 writeRaster(ec_pred_uncert100$pred_sd,"K:/GSP/modeling/predict/final_maps/ec100_uncert_predsd.tif", overwrite = TRUE )
 
 
-############################PH#####################################
+############################ PH #####################################
 load(file = "K:/GSP/modeling/predict/ph/training_data.RData")
 load(file = "K:/GSP/modeling/predict/ph/ph_rf.RData")
 load(file = "K:/GSP/modeling/LDM-compact_20200709.RData")
