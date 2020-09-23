@@ -102,7 +102,7 @@ site(spc) <- s
 
 ```{r pt}
 
-load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
 
 library(aqp)
 library(dplyr)
@@ -157,6 +157,7 @@ attributes(test_w)$reshapeWide <- NULL
 s <- test_w
 vars <- c("pedon_key", "labsampnum", "hzn_desgn", "hzn_top", "hzn_bot", "texture_lab", "clay_total", "ec_predict_one_to_two", "electrical_conductivity_satx", "ph_h2o", "ph_saturated_paste")
 
+set.seed(111)
 idx <- s$pedon_key %in% unique(h[complete.cases(h[vars]), ]$pedon_key)
 s_sub <- s[idx, ]
 n    <- round(nrow(s_sub) * 0.75)
@@ -186,7 +187,14 @@ caret::RMSE(ph_test, test$ph_saturated_paste, na.rm = TRUE)
 # EC
 train <- train[row.names(train) != "288352", ]
 train$ec_t <- log(train$ec_predict_one_to_two + 0.1)
+
 ec_glm <- glm(electrical_conductivity_satx ~ splines::ns(log(ec_predict_one_to_two + 0.1), 3) + clay_total, data = train, y = TRUE, family = Gamma(link = log))
+
+ec_glm2 <- glm(electrical_conductivity_satx ~ splines::ns(log(ec_predict_one_to_two + 0.1), 3), data = train, y = TRUE, family = Gamma(link = log))
+
+
+
+# glm 1
 plot(ec_glm)
 termplot(ec_glm, partial.resid = TRUE)
 visreg::visreg(ec_glm, scale = "response", partial = TRUE)
@@ -201,6 +209,24 @@ caret::R2(ec_test, test$electrical_conductivity_satx, na.rm = TRUE)
 caret::RMSE(ec_test, test$electrical_conductivity_satx, na.rm = TRUE)
 plot(log(test$electrical_conductivity_satx + 0.1), log(ec_test + 0.1)); abline(0, 1)
 
+
+# glm 2
+plot(ec_glm2)
+termplot(ec_glm2, partial.resid = TRUE)
+visreg::visreg(ec_glm2, scale = "response", partial = TRUE)
+with(ec_glm, plot(log(y + 0.1), log(fitted.values + 0.1))); abline(0, 1)
+modEvA::Dsquared(ec_glm, adjust = TRUE)
+with(ec_glm2, caret::R2(fitted.values, y, na.rm = TRUE))
+summary(ec_glm2)
+
+test$ec_t <- log(test$ec_predict_one_to_two + 0.1)
+ec_test <- predict(ec_glm2, newdata = test, type = "response") 
+caret::R2(ec_test, test$electrical_conductivity_satx, na.rm = TRUE)
+caret::RMSE(ec_test, test$electrical_conductivity_satx, na.rm = TRUE)
+plot(log(test$electrical_conductivity_satx + 0.1), log(ec_test + 0.1)); abline(0, 1)
+
+
+# rf
 ec_rf <- randomForest(electrical_conductivity_satx ~ ec_predict_one_to_two + clay_total, data = train, na.action = na.exclude)
 caret::R2(ec_rf$predicted, ec_rf$y, na.rm = TRUE)
 caret::RMSE(ec_rf$predicted, ec_rf$y, na.rm = TRUE)
@@ -255,7 +281,7 @@ h <- within(h, {
 
 replaceHorizons(spc) <- h
 
-# save(ldm, spc, clhs_pkey, ec_glm, ph_lm, file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
+# save(ldm, spc, clhs_pkey, ec_glm, ec_glm2, ph_lm, file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_202000923.RData")
 
 ```
 
@@ -268,8 +294,11 @@ replaceHorizons(spc) <- h
 # mpspline
 library(mpspline2)
 
-gsp_vars <- c("ph_ptf", "ec_ptf", "sar", "esp", "tss")
 
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
+
+
+gsp_vars <- c("ph_ptf", "ec_ptf", "sar", "esp", "tss")
 s_mps_l <- lapply(gsp_vars, function(x) {
   
   vars <- c("pedon_key", "hzn_top", "hzn_bot", x)

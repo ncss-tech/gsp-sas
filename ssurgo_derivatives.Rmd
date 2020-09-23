@@ -654,4 +654,41 @@ mlra_r2 <- deratify(mlra_r, att = "cluster", filename = "D:/geodata/project_data
 
 ```
 
-          
+
+
+# OCONUS
+
+```{r}
+
+library(raster)
+
+fp <- "D:/geodata/project_data/gsp-sas/OCONUS/SSURGO_properties_no_ptf/Raster/"
+lf <- list.files(path = fp, pattern = ".tif$", full.names = TRUE)
+
+sapply(lf, function(x) {
+  if (grepl("_pH", x)) {
+    cat("applying pH ptf to ", x, "\n")
+    r <- raster(x)
+    x2 <- names(r)
+    names(r) <- "ph_h2o"
+    predict(r, ph_lm, filename = paste0("D:/geodata/project_data/gsp-sas/OCONUS/", x2, "_ptf.tif"), format = "GTiff", progress = "text", overwrite = TRUE)
+    }
+  })
+
+
+predfun <- function(model, data) {
+  v <- predict(model, data, type = "response")
+}
+
+sapply(lf, function(x) {
+  if (grepl("_ec", x)) {
+    cat("applying ec ptf2 to ", x, "\n")
+    r <- raster(x)
+    x2 <- names(r)
+    names(r) <- "ec_predict_one_to_two"
+    predict(r, ec_glm2, type = "response", filename = paste0("D:/geodata/project_data/gsp-sas/OCONUS/", x2, "_ptf.tif"), format = "GTiff", progress = "text", overwrite = TRUE, index = 1)
+    }
+  })
+
+```
+

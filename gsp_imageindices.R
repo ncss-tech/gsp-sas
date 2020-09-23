@@ -318,3 +318,24 @@ vssi <- raster(predictors, layer = 16)
 sr <- raster(predictors, layer = 17)
 crsi <- raster(predictors, layer = 18)
 bi <- raster(predictors, layer = 19)
+
+
+
+# https://stackoverflow.com/questions/45428129/how-to-subset-a-raster-based-on-grid-cell-values
+
+library(raster)
+
+dem <- raster("D:/geodata/project_data/gsp-sas/1km covariates/ISRIC/CONUS/DEMENV5_CONUS.tif")
+
+data(wrld_simpl, package = "maptools")
+
+r <- raster(xmn = -180, xmx = 180, ymn = -90, ymx = 90, res = 1)
+wm2 <- rasterize(wrld_simpl, r, 1)
+wm3 <- mask(is.na(wm2), wm2, maskvalue = 1, updatevalue = NA, progress = "text")
+wm3_dist <- distance(wm3, progress = "text")
+wm3_dist <- projectRaster(wm3_dist, dem, progress = "text")
+
+writeRaster(wm3_dist, filename = "C:/workspace2/wm3_dist.tif", overwrite = TRUE)
+
+
+d <- wm3_dist * wm3 
