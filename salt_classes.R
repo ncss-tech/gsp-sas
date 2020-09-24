@@ -439,17 +439,17 @@ writeRaster(ESP_sample_mean, filename = "D:/geodata/project_data/gsp-sas/predict
 ec_sd_l <- lapply(mc_st, function(x) x[[4]])
 ec_sd_l <- c(ec_sd_l, fun = mean, na.rm = TRUE, progress = "text")
 ec_sd_r <- do.call(mosaic, ec_sd_l)
-writeRaster(ec_100_sd_r, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/ec_100_mc_sd.tif", overwrite = TRUE)
+writeRaster(ec_sd_r, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/ec_100_mc_sd.tif", overwrite = TRUE)
 
 ph_sd_l <- lapply(mc_st, function(x) x[[5]])
 ph_sd_l <- c(ph_sd_l, fun = mean, na.rm = TRUE, progress = "text")
 ph_sd_r <- do.call(mosaic, ph_sd_l)
-writeRaster(ph_100_sd_r, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/ph_100_mc_sd.tif", overwrite = TRUE)
+writeRaster(ph_sd_r, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/ph_100_mc_sd.tif", overwrite = TRUE)
 
 esp_sd_l <- lapply(mc_st, function(x) x[[6]])
 esp_sd_l <- c(esp_sd_l, fun = mean, na.rm = TRUE, progress = "text")
 esp_sd_r <- do.call(mosaic, esp_sd_l)
-writeRaster(esp_100_sd_r, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/esp_100_mc_sd.tif", overwrite = TRUE)
+writeRaster(esp_sd_r, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/esp_100_mc_sd.tif", overwrite = TRUE)
 
 
 
@@ -471,11 +471,11 @@ tm_shape(ESP_sample_mean) +
 ##uncertainty propagation through the classification model
 lapply(1:34, function(x) {
     
-    cat(as.character(Sys.time()), x, "propagating error for \n")
+    cat(as.character(Sys.time()), "propagating error for", x, "\n")
     
     load(file = paste0("D:/geodata/project_data/gsp-sas/predictions_v2/accuracy_uncert/input_sample_", x, "_bt.RData"))
     
-    Salinity_model_raster <- function(EC1 = rs_sub["EC_100"], PH1 = rs_sub["PH_100"], ESP1 = rs_sub["ESP_100"]){
+    Salinity_model_raster <- function(EC1, PH1, ESP1){
         ww = EC1
         ww = raster(ww)
         ww$salt = saltSeverity(values(EC1),values(PH1),values(ESP1),"FAO")
@@ -494,23 +494,15 @@ lapply(1:34, function(x) {
                                  )
     
     #determine uncertainty of final classified map
-    samplelist <- list()
-    samplelist [[1]] = map(1:100, function(x) {input_sample[[x]]})
-    samplelist [[2]] = map(101:200, function(x) {input_sample[[x]]})
-    samplelist [[3]] = map(201:300, function(x) {input_sample[[x]]})
-    input_sample = samplelist
-    salinity_sample = propagate(realizations = input_sample, model = Salinity_model_raster, n = MC)
     salinity_sample <- raster::stack(salinity_sample)
-    names(salinity_sample) <- paste("salt.", c(1:nlayers(salinity_sample)), sep = "")
-    salinity_freq = modal(salinity_sample, freq=TRUE)
-    salinity_prop = salinity_fre/100
-    salinity_SErr = sqrt(salinity_prop*(1-salinity_prop)/100)
+    salinity_freq = modal(salinity_sample, freq = TRUE)
+    salinity_prop = salinity_freq / 100
+    salinity_SErr = sqrt(salinity_prop * (1 - salinity_prop) / 100)
     CL = 0.95
-    z_star = round(qnorm((1-CL)/2,lower.tail=F),digits = 2)
-    salinity_MErr = z_star*salinity_SErr
+    z_star = round(qnorm((1 - CL) / 2, lower.tail = FALSE), digits = 2)
+    salinity_MErr = z_star * salinity_SErr
     
     #write final output to raster
-    writeRaster(salinity_MErr,filename="Salinity_ME.tif",format="GTiff")
-    
+    writeRaster(salinity_MErr, filename = paste0("Salinity_ME_", x, ".tif"), format = "GTiff", progress = "text")
 })
 
