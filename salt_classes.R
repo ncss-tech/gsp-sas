@@ -503,6 +503,14 @@ lapply(1:34, function(x) {
     salinity_MErr = z_star * salinity_SErr
     
     #write final output to raster
-    writeRaster(salinity_MErr, filename = paste0("Salinity_ME_", x, ".tif"), format = "GTiff", progress = "text")
+    writeRaster(salinity_MErr, filename = paste0("D:/geodata/project_data/gsp-sas/predictions_v2/accuracy_uncert/Salinity_ME_", x, ".tif"), format = "GTiff", progress = "text")
 })
+
+
+mc_err <- lapply(1:34, function(x) {
+    stack(paste0("D:/geodata/project_data/gsp-sas/predictions_v2/accuracy_uncert/Salinity_ME_", x, ".tif"))
+})
+mc_err_l <- c(mc_err, fun = mean, na.rm = TRUE, progress = "text")
+mc_err_final <- do.call(mosaic, mc_err_l)
+writeRaster(mc_err_final, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/Salinity_ME_100.tif", overwrite = TRUE, progress = "text")
 
