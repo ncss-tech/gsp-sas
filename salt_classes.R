@@ -27,17 +27,17 @@ library(soilassessment)
 ###predict salt classes###
 
 # setwd("G:/GSP/predictions/predictions")
-setwd("D:/geodata/project_data/gsp-sas/predictions")
+setwd("D:/geodata/project_data/gsp-sas/predictions_v2")
 
 ### Read in prediction layers###
 library(raster)
 
 f <- c(PH_030 = "ph_030_qrf_mlra_pm_NULL_final4_fill_mask.tif",
-       EC_030 = "ec030_final_fill_mask.tif", 
-       ESP_030 = "notr_esp_030_t25_nomlra_nafw.tif",
+       EC_030 = "ec030bt_fill_mask.tif", 
+       ESP_030 = "v2_esp030t25_coast_pm_log_nafw.tif",
        PH_100 = "ph_100_qrf_mlra_pm_NULL_final4_fill_mask.tif",
-       EC_100 = "ec100_final_fill_mask.tif",
-       ESP_100 = "notr_esp_100_t25_nomlra_nafw.tif" 
+       EC_100 = "ec100bt_fill_mask.tif",
+       ESP_100 = "v2_esp100t25_coast_pm_log_nafw.tif" 
        ) #change file names as needed
 #f <- c("ec_030_bt_nomlra_wstatspm.tif", "cv_esp_030_nomlra_statspm.tif", "ph_030_qrf_mlra_pm_NULL_final2.tif") #change file names as needed
 rs <- readAll(stack(f))
@@ -137,8 +137,8 @@ head(soilv)
 
 
 #### predict salt classes for each test point
-soilv$saltaffected1 <- saltSeverity(ec  = soilv$ec_ptf.000_030_cm, 
-                                    ph  = soilv$ph_ptf.000_030_cm, 
+soilv$saltaffected1 <- saltSeverity(EC  = soilv$ec_ptf.000_030_cm, 
+                                    pH  = soilv$ph_ptf.000_030_cm, 
                                     ESP = soilv$esp.000_030_cm, 
                                     "FAO"
                                     ) #change for each depth
@@ -216,13 +216,13 @@ Kappa(table(soilv$sa, soilv$sa1))
 
 
 # setwd("G:/GSP/predictions/acc_unc")
-setwd("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert")
+setwd("D:/geodata/project_data/gsp-sas/predictions_v2/accuracy_uncert")
  
  
 ##bring in uncertainty layers and stack them
-unc <- c(EC_unc  = "ec030_uncert_predsd.tif", 
-         PH_unc  = "ph_030_uncert_predsd.tif", 
-         ESP_unc = "notr_esp_030_t25_nomlra_prun_sd_nafw.tif"
+unc <- c(EC_unc  = "ec100_uncert_predsd.tif", 
+         PH_unc  = "ph_100_uncert_predsd.tif", 
+         ESP_unc = "v2_esp100t25_coast_pm_log_nafw_sd.tif"
          )
 uncst <- projectRaster(readAll(stack(unc)), crs = "+init=epsg:5070", progress = "text")
 uncst$EC_unct  <- log(uncst$EC_unc + 0.1)
@@ -253,44 +253,28 @@ uncst2
 ###############
 library(automap)
 
-EC11 <- as(rs_030["EC_030"], "SpatialPointsDataFrame") #change to square pixels?
-#b1 <- nrow(ec_030_sp)
-#c1 <- trunc(0.01 * b1)
-#jj1 <- ec_030_sp[sample(b1, c1), ]
-#ec_030_vrm <- autofitVariogram(EC_030t ~ 1, jj1) 
-
-EC11 <- as(rs_030["EC_030t"], "SpatialPointsDataFrame")
+EC11 <- as(rs_100["EC_100t"], "SpatialPointsDataFrame")
 b1 <- nrow(EC11)
 c1 <- trunc(0.01 * b1)
 jj1 <- EC11[sample(b1, c1),]
-ec_030_vrm <- autofitVariogram(EC_030t ~ 1, jj1)
-plot(ec_030_vrm)
+ec_100_vrm <- autofitVariogram(EC_100t ~ 1, jj1)
+plot(ec_100_vrm)
 
-#PH11 <- as(rs_030["PH_030"], "SpatialPointsDataFrame")
-#b2 <- nrow(ph_030_sp)
-#c2 <- trunc(0.01 * b2)
-#jj2 <- ph_030_sp[sample(b2, c2), ]
-#ph_030_vrm <- autofitVariogram(PH_030 ~ 1, jj2)
 
-PH11 <- as(rs_030["PH_030"], "SpatialPointsDataFrame")
+PH11 <- as(rs_100["PH_100"], "SpatialPointsDataFrame")
 b2 <- nrow(PH11)
 c2 <- trunc(0.01 * b2)
 jj2 <- PH11[sample(b2, c2),]
-ph_030_vrm <- autofitVariogram(PH_030 ~ 1, jj2)
-plot(ph_030_vrm)
+ph_100_vrm <- autofitVariogram(PH_100 ~ 1, jj2)
+plot(ph_100_vrm)
 
-#ESP11 <- as(rs_030["ESP_030"], "SpatialPointsDataFrame")
-#b3 <- nrow(esp_030_sp)
-#c3 <- trunc(0.01 *b3)
-#jj3 <- esp_030_sp[sample(b3, c3), ]
-#esp_030_vrm <- autofitVariogram(ESP_030t ~ 1, jj3)
 
-ESP11 <- as(rs_030["ESP_030t"], "SpatialPointsDataFrame")
+ESP11 <- as(rs_100["ESP_100t"], "SpatialPointsDataFrame")
 b3 <- nrow(ESP11)
 c3 <- trunc(0.01 * b3)
 jj3 <- ESP11[sample(b3, c3),]
-esp_030_vrm <- autofitVariogram(ESP_030t ~ 1, jj3)
-plot(esp_030_vrm)
+esp_100_vrm <- autofitVariogram(ESP_100t ~ 1, jj3)
+plot(esp_100_vrm)
 
 
 
@@ -299,26 +283,26 @@ library(spup)
 
 ## all crm objects have ranges = 20000 like example in manual but that is NOT the range output by the vrm; all ranges have to match for genSample()
 plot(ec_030_vrm) # Note the spatial correlation model and the value of Range parameter
-acf(EC11$EC_030t) ##Also note the acf0 (at lag 0)
-ec_030_crm <- makeCRM(acf0 = 0.9, range = 20000, model = "Sph") #variogram model is actually "Ste" but then it won't plot...?? object 'xlim_factor' not found ; 
+acf(EC11$EC_100t) ##Also note the acf0 (at lag 0)
+ec_100_crm <- makeCRM(acf0 = 0.9, range = 20000, model = "Sph") #variogram model is actually "Ste" but then it won't plot...?? object 'xlim_factor' not found ; 
 plot(ec_030_crm, main = "EC 30cm correlogram")
 
 plot(ph_030_vrm)
-acf(PH11$PH_030)
-ph_030_crm <- makeCRM(acf0 = 0.9, range = 20000, model = "Sph") 
+acf(PH11$PH_100)
+ph_100_crm <- makeCRM(acf0 = 0.9, range = 20000, model = "Sph") 
 plot(ph_030_crm, main = "PH 30cm correlogram")
 
 plot(esp_030_vrm)
-acf(ESP11$ESP_030t)
-esp_030_crm <- makeCRM(acf0 = 0.9, range = 20000, model = "Sph")
+acf(ESP11$ESP_100t)
+esp_100_crm <- makeCRM(acf0 = 0.9, range = 20000, model = "Sph")
 plot(esp_030_crm, main = "ESP 30cm correlogram")
 
 
-# save(ec_030_vrm, ph_030_vrm, esp_030_vrm,
-#      ec_030_crm, ph_030_crm, esp_030_crm,
-#      file = "gsp_variograms.RData"
+# save(ec_100_vrm, ph_100_vrm, esp_100_vrm,
+#      ec_100_crm, ph_100_crm, esp_100_crm,
+#      file = "gsp_variograms_100.RData"
 #      )
-load(file = "gsp_variograms.RData")
+load(file = "gsp_variograms_100.RData")
 
 ###################
 
@@ -330,14 +314,15 @@ load(file = "gsp_variograms.RData")
 MC <- 100
 
 test_ex <- sampleRandom(rs, size = 10000, na.rm = TRUE, sp = TRUE)@data
-cm <- cor(test_ex[c(7, 1, 8)])
+cm <- cor(test_ex[c(9, 4, 10)])
 
 sa <- read_sf("D:/geodata/soils/SSURGO_CONUS_FY19.gdb", layer = "SAPOLYGON")
 tiles <- st_as_sf(st_make_grid(sa, n = c(6, 6)))
-tiles$tile <- 1:length(tiles)
+tiles$tile <- 1:nrow(tiles)
 
 
 # compute MC simulation over tiles
+
 lapply(1:34, function(x) {
     
     cat(as.character(Sys.time()), x, "\n")
@@ -348,35 +333,55 @@ lapply(1:34, function(x) {
     uncst_sub <- crop(uncst, tiles_sub)
     
     EC_UM <- defineUM(distribution = "norm", 
-                      distr_param  = c(rs_sub$EC_030t, uncst_sub$EC_unct), 
-                      crm          = ec_030_crm, 
+                      distr_param  = c(rs_sub$EC_100t, uncst_sub$EC_unct), 
+                      crm          = ec_100_crm, 
                       id           = "EC"
-                      )
+    )
     PH_UM <- defineUM(distribution = "norm",
-                      distr_param  = c(rs_sub$PH_030, uncst_sub$PH_unc),
-                      crm          = ph_030_crm,
+                      distr_param  = c(rs_sub$PH_100, uncst_sub$PH_unc),
+                      crm          = ph_100_crm,
                       id = "PH"
-                      )
+    )
     ESP_UM <- defineUM(distribution = "norm",
-                       distr_param  = c(rs_sub$ESP_030t, uncst_sub$ESP_unct),
-                       crm          = esp_030_crm,
+                       distr_param  = c(rs_sub$ESP_100t, uncst_sub$ESP_unct),
+                       crm          = esp_100_crm,
                        id           = "ESP"
-                       )
+    )
     MC <- 100
     salinityMUM <- defineMUM(UMlist = list(EC_UM, PH_UM, ESP_UM),
                              cormatrix = cm
-                             )
+    )
     input_sample <- genSample(UMobject = salinityMUM, 
                               n = MC, 
                               samplemethod = "ugs", 
                               nmax = 20, 
                               asList = FALSE, 
                               debug.level = -1
-                              )
-    save(input_sample, file = paste0("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert/input_sample_", x, ".RData"))
+    )
+    save(input_sample, file = paste0("D:/geodata/project_data/gsp-sas/predictions_v2/accuracy_uncert/input_sample_", x, ".RData"))
 })
     
+
+# back transform results
+
+lapply(1:34, function(x){
     
+    cat(as.character(Sys.time()), x, "\n")
+    
+    load(file = paste0("D:/geodata/project_data/gsp-sas/predictions_v2/accuracy_uncert/input_sample_", x, ".RData"))
+    
+    EC_sample  <- input_sample[[1:100]]
+    PH_sample  <- input_sample[[101:200]]
+    ESP_sample <- input_sample[[201:300]]
+    
+    EC_sample  <- exp(EC_sample) - 0.1
+    ESP_sample <- exp(ESP_sample) - 0.1
+    
+    input_sample <- stack(EC_sample, PH_sample, ESP_sample)
+    
+    save(input_sample, file = paste0("D:/geodata/project_data/gsp-sas/predictions_v2/accuracy_uncert/input_sample_", x, "_bt.RData"))
+})
+
 
 # iterate over tiles and compute input sample statistics
 
@@ -384,32 +389,32 @@ lapply(1:34, function(x){
     
     cat(as.character(Sys.time()), x, "\n")
     
-    load(file = paste0("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert/input_sample_", x, ".RData"))
+    load(file = paste0("D:/geodata/project_data/gsp-sas/predictions_v2/accuracy_uncert/input_sample_", x, "_bt.RData"))
     
-    EC_sample <- input_sample[[1:MC]]
-    PH_sample <- input_sample[[(MC+1):(2*MC)]]
-    ESP_sample <- input_sample[[(2*MC+1):(3*MC)]]
+    EC_sample  <- input_sample[[1:100]]
+    PH_sample  <- input_sample[[101:200]]
+    ESP_sample <- input_sample[[201:300]]
     
     EC_sample_mean  <- mean(EC_sample)
     PH_sample_mean  <- mean(PH_sample)
     ESP_sample_mean <- mean(ESP_sample)
     
     EC_sample_sd  <- calc(EC_sample,  fun = sd)
-    PH_sample_sd  <- calc(PH_sample,  fun = sd)
+    PH_sample_sd  <- calc(PH_sample,   fun = sd)
     ESP_sample_sd <- calc(ESP_sample, fun = sd)
 
     st <- stack(EC_sample_mean, PH_sample_mean, ESP_sample_mean,
                 EC_sample_sd,   PH_sample_sd,   ESP_sample_mean
                 )
     
-    writeRaster(st, filename = paste0("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert/gsp_sample_st_", x, ".tif"), overwrite = TRUE)
+    writeRaster(st, filename = paste0("D:/geodata/project_data/gsp-sas/predictions_V2/accuracy_uncert/gsp_sample_st_", x, ".tif"), overwrite = TRUE)
     })
 
 
 
 # load MC iterations
 mc_st <- lapply(1:34, function(x) {
-    stack(paste0("D:/geodata/project_data/gsp-sas/predictions/accuracy_uncert/gsp_sample_st_", x, ".tif"))
+    stack(paste0("D:/geodata/project_data/gsp-sas/predictions_v2/accuracy_uncert/gsp_sample_st_", x, ".tif"))
     })
 
 
@@ -417,41 +422,40 @@ mc_st <- lapply(1:34, function(x) {
 ec_avg_l <- lapply(mc_st, function(x) x[[1]])
 ec_avg_l <- c(ec_avg_l, fun = mean, na.rm = TRUE, progress = "text")
 EC_sample_mean <- do.call(mosaic, ec_avg_l)
-EC_sample_mean <- calc(EC_sample_mean, function(x) exp(x) - 0.1)
-writeRaster(EC_sample_mean, filename = "ec_mc_avg.tif", overwrite = TRUE)
+writeRaster(EC_sample_mean, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/ec_100_mc_avg.tif", overwrite = TRUE)
 
 ph_avg_l <- lapply(mc_st, function(x) x[[2]])
 ph_avg_l <- c(ph_avg_l, fun = mean, na.rm = TRUE, progress = "text")
 PH_sample_mean <- do.call(mosaic, ph_avg_l)
-writeRaster(PH_sample_mean, filename = "ph_mc_avg.tif", overwrite = TRUE)
+writeRaster(PH_sample_mean, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/ph_100_mc_avg.tif", overwrite = TRUE)
 
-esp_avg_l <- lapply(mc_st, function(x) x[[1]])
+esp_avg_l <- lapply(mc_st, function(x) x[[3]])
 esp_avg_l <- c(esp_avg_l, fun = mean, na.rm = TRUE, progress = "text")
 ESP_sample_mean <- do.call(mosaic, esp_avg_l)
-ESP_sample_mean <- calc(ESP_sample_mean, function(x) exp(x) - 0.1)
-writeRaster(ESP_sample_mean, filename = "esp_mc_avg.tif", overwrite = TRUE)
+writeRaster(ESP_sample_mean, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/esp_100_mc_avg.tif", overwrite = TRUE)
 
 
 # mosaic and calculate standard deviations
 ec_sd_l <- lapply(mc_st, function(x) x[[4]])
 ec_sd_l <- c(ec_sd_l, fun = mean, na.rm = TRUE, progress = "text")
 ec_sd_r <- do.call(mosaic, ec_sd_l)
-ec_sd_r <- calc(ec_sd_r, function(x) exp(x) - 0.1)
-writeRaster(ec_sd_r, filename = "ec_mc_sd.tif", overwrite = TRUE)
+writeRaster(ec_100_sd_r, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/ec_100_mc_sd.tif", overwrite = TRUE)
 
 ph_sd_l <- lapply(mc_st, function(x) x[[5]])
 ph_sd_l <- c(ph_sd_l, fun = mean, na.rm = TRUE, progress = "text")
 ph_sd_r <- do.call(mosaic, ph_sd_l)
-writeRaster(ph_sd_r, filename = "ph_mc_sd.tif", overwrite = TRUE)
+writeRaster(ph_100_sd_r, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/ph_100_mc_sd.tif", overwrite = TRUE)
 
 esp_sd_l <- lapply(mc_st, function(x) x[[6]])
 esp_sd_l <- c(esp_sd_l, fun = mean, na.rm = TRUE, progress = "text")
 esp_sd_r <- do.call(mosaic, esp_sd_l)
-esp_sd_r <- calc(esp_sd_r, function(x) exp(x) - 0.1)
-writeRaster(esp_sd_r, filename = "esp_mc_sd.tif", overwrite = TRUE)
+writeRaster(esp_100_sd_r, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/esp_100_mc_sd.tif", overwrite = TRUE)
+
 
 
 # plot the realizations
+library(tmap)
+
 tm_shape(EC_sample_mean) + 
     tm_raster(palette = rev(viridis::viridis(5)), breaks = c(0, 2, 4, 8, 16, 300), title = "EC") + 
     tm_layout(main.title = "Mean of EC realizations", legend.outside = TRUE)
@@ -463,37 +467,50 @@ tm_shape(ESP_sample_mean) +
     tm_layout(main.title = "Mean of ESP realizations", legend.outside = TRUE)
 
 
+
 ##uncertainty propagation through the classification model
-Salinity_model_raster <- function (EC1,PH1,ESP1){
-    ww=EC1
-    ww=raster(ww)
-    ww$salt=saltSeverity(values(EC1),values(PH1),values(ESP1),"FAO")
-    ww=ww$salt; names(ww)=c("salt")
-    ww
-   }
+lapply(1:34, function(x) {
+    
+    cat(as.character(Sys.time()), x, "propagating error for \n")
+    
+    load(file = paste0("D:/geodata/project_data/gsp-sas/predictions_v2/accuracy_uncert/input_sample_", x, "_bt.RData"))
+    
+    Salinity_model_raster <- function(EC1 = rs_sub["EC_100"], PH1 = rs_sub["PH_100"], ESP1 = rs_sub["ESP_100"]){
+        ww = EC1
+        ww = raster(ww)
+        ww$salt = saltSeverity(values(EC1),values(PH1),values(ESP1),"FAO")
+        ww = ww$salt; names(ww) = c("salt")
+        ww
+    }
+    
+    v <- list()
+    v[[1]] <- map(1:100, function(x){input_sample[[x]]})
+    v[[2]] <- map(101:200, function(x){input_sample[[x]]})
+    v[[3]] <- map(201:300, function(x){input_sample[[x]]})
+    input_sample <- v
+    salinity_sample <- propagate(realizations = input_sample,
+                                 model        = Salinity_model_raster,
+                                 n            = MC
+                                 )
+    
+    #determine uncertainty of final classified map
+    samplelist <- list()
+    samplelist [[1]] = map(1:100, function(x) {input_sample[[x]]})
+    samplelist [[2]] = map(101:200, function(x) {input_sample[[x]]})
+    samplelist [[3]] = map(201:300, function(x) {input_sample[[x]]})
+    input_sample = samplelist
+    salinity_sample = propagate(realizations = input_sample, model = Salinity_model_raster, n = MC)
+    salinity_sample <- raster::stack(salinity_sample)
+    names(salinity_sample) <- paste("salt.", c(1:nlayers(salinity_sample)), sep = "")
+    salinity_freq = modal(salinity_sample, freq=TRUE)
+    salinity_prop = salinity_fre/100
+    salinity_SErr = sqrt(salinity_prop*(1-salinity_prop)/100)
+    CL = 0.95
+    z_star = round(qnorm((1-CL)/2,lower.tail=F),digits = 2)
+    salinity_MErr = z_star*salinity_SErr
+    
+    #write final output to raster
+    writeRaster(salinity_MErr,filename="Salinity_ME.tif",format="GTiff")
+    
+})
 
-v <- list()
-v[[1]] <- map(1:100, function(x){input_sample[[x]]})
-v[[2]] <- map(101:200, function(x){input_sample[[x]]})
-v[[3]] <- map(201:300, function(x){input_sample[[x]]})
-input_sample <- v
-salinity_sample <- propagate(realizations=input_sample,model=Salinity_model_raster,n=MC)
-
-#determine uncertainty of final classified map
-samplelist <- list()
-samplelist [[1]] = map(1:100, function(x){input_sample[[x]]})
-samplelist [[2]] = map(101:200, function(x){input_sample[[x]]})
-samplelist [[3]] = map(201:300, function(x){input_sample[[x]]})
-input_sample = samplelist
-salinity_sample = propagate(realizations = input_sample, model = Salinity_model_raster, n = MC)
-salinity_sample <- raster::stack(salinity_sample)
-names(salinity_sample) <- paste("salt.", c(1:nlayers(salinity_sample)), sep = "")
-salinity_freq = modal(salinity_sample, freq=TRUE)
-salinity_prop = salinity_fre/100
-salinity_SErr = sqrt(salinity_prop*(1-salinity_prop)/100)
-CL = 0.95
-z_star = round(qnorm((1-CL)/2,lower.tail=F),digits = 2)
-salinity_MErr = z_star*salinity_SErr
-
-#write final output to raster
-writeRaster(salinity_MErr,filename="Salinity_ME.tif",format="GTiff")
