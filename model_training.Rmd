@@ -369,7 +369,7 @@ m <- c(
   210, 300, 1
   )
 m <- matrix(m, ncol = 3, byrow = TRUE)
-lc <- reclassify(lc, m, filename = "test.tif", overwrite = TRUE)
+lc <- reclassify(lc, m, filename = "D:/geodata/project_data/gsp-sas/1km covariates/ISRIC/CONUS_redundant/test.tif", overwrite = TRUE, progress = TRUE)
 
 mask(ph_030_r2, lc, filename = "D:geodata/project_data/gsp-sas/ph_030_qrf_mlra_pm_NULL_final4_fill_mask.tif", overwrite = TRUE)
 mask(ph_100_r2, lc, filename = "D:geodata/project_data/gsp-sas/ph_100_qrf_mlra_pm_NULL_final4_fill_mask.tif", overwrite = TRUE)
@@ -382,47 +382,107 @@ mask(ph_100_r2, lc, filename = "D:geodata/project_data/gsp-sas/ph_100_qrf_mlra_p
 ```{r}
 
 load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
-load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
+load(file = "D:/geodata/project_data/gsp-sas/deliverables/models/ph_rf.RData")
+load(file = "D:/geodata/project_data/gsp-sas/deliverables/models/ec_rf.RData")
+load(file = "D:/geodata/project_data/gsp-sas/deliverables/models/esp_rf.RData")
 load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
-
-
-# predict using test data
-idx <- names(test)[names(test) %in% 
-  c("pedon_key", "ph_ptf.000_030_cm", "ph_ptf.030_100_cm",
-    unique(c(
-      ph_rf_030_v2$finalModel$forest$independent.variable.names,
-      ph_rf_100_v2$finalModel$forest$independent.variable.names))
-    )]
-test2 <- na.exclude(test[idx])
-test2$ph_030_p <- predict(ph_rf_030_v2, newdata = test2)
-test2$ph_100_p <- predict(ph_rf_100_v2, newdata = test2)
-
 
 
 # plot
 library(ggplot2)
 
-ggplot(test2, aes(x = ph_ptf.000_030_cm, y = ph_030_p)) +
+models <- list(ph_rf_030_v2, ph_rf_100_v2, ec_rf_030, ec_rf_100, esp_rf_030_tune, esp_rf_100_tune)
+vars <- list(
+  "ph_ptf.000_030_cm", "ph_ptf.030_100_cm", 
+  "ec_ptf.000_030_cm", "ec_ptf.030_100_cm",
+  "esp.000_030_cm",    "esp.030_100_cm"
+  )
+fun <- function(variable, model) {
+  idx     <- c("pedon_key", variable, model$finalModel$forest$independent.variable.names)
+  test2   <- na.exclude(train[idx])
+  
+  test2$obs  <- test2[[variable]]
+  test2$pred <- predict(model, newdata = test2)
+  if (grepl(c("^ec|^esp"), variable)) {
+    test2$pred <- exp(test2$pred) - 0.1
+  }
+  
+  return(test2)
+}
+test2 <- mapply(FUN = fun, vars, models, SIMPLIFY = FALSE)
+names(test2) <- unlist(vars)
+
+# pH
+ggplot(test2[[1]], aes(x = obs, y = pred)) +
   geom_point(alpha = 0.1) +
   geom_abline(col = "blue", size = 1)
 
-ggplot(test2, aes(x = ph_ptf.030_100_cm, y = ph_100_p)) +
+# EC
+ggplot(test2[[5]], aes(x = obs, y = pred)) +
   geom_point(alpha = 0.1) +
-  geom_abline(col = "blue", size = 1)
+  geom_abline(col = "blue", size = 1) +
+  scale_x_log10() + scale_x_continuous(breaks = c(0, 2, 8, 16, 200)) + xlim(0, 50) + ylim(0, 16) # EC
 
 
-# accuracy metrics on test data
-stratia_f <- function(measure, predict) {
+
+# accuracy metrics stratia
+stratia_f <- function(predicted, measured) {
+
   data.frame(
-    Bias     =      mean( predict - measure,    na.rm = TRUE),
-    RMSE     = sqrt(mean((predict - measure)^2, na.rm = TRUE)),
-    Rsquared =      cor(  predict,  measure)^2,
-    NSE      = 1 -  sum(  predict - measure)^2 /
-      sum((predict - mean(measure, na.rm = TRUE))^2, na.rm = TRUE)
+    Bias     =      mean( predicted - measured,    na.rm = TRUE),
+    RMSE     = sqrt(mean((predicted - measured)^2, na.rm = TRUE)),
+    Rsquared =      cor(  predicted,  measured, use = "pairwise.complete.obs")^2,
+    NSE      = 1 - (
+      sum((measured - predicted)^2) /
+      sum((measured - mean(measured))^2)
+      )
+    # NSE = hydroGOF::NSE(predicted, measured)
   )}
 
-ph_030_stratia <- stratia_f(test2$ph_030_p, test2$ph_ptf.000_030_cm)
-ph_100_stratia <- stratia_f(test2$ph_100_p, test2$ph_ptf.030_100_cm)
+
+models <- list(ph_rf_030_v2, ph_rf_100_v2, ec_rf_030, ec_rf_100, esp_rf_030_tune, esp_rf_100_tune)
+vars   <- list("pH", "EC", "ESP")[c(1, 1, 2, 2, 3, 3)]
+deps   <- list(30, 100)[rep(1:2, 3)]
+variables <- list(
+  "ph_ptf.000_030_cm", "ph_ptf.030_100_cm", 
+  "ec_ptf.000_030_cm", "ec_ptf.030_100_cm",
+  "esp.000_030_cm",    "esp.030_100_cm"
+  )
+fun <- function(variable, var, depth, model, dataset, data) {
+  
+  idx     <- c("pedon_key", variable, model$finalModel$forest$independent.variable.names)
+  data2   <- na.exclude(data[idx])
+  data2$p <- predict(model, newdata = data2)
+  # m <- strsplit(var, "_|\\.")[[1]][1]
+
+  obs  <- data2[[variable]]
+  pred <- data2$p
+  if (grepl(c("^ec|^esp"), variable)) {
+    pred <- exp(pred) - 0.1
+  }
+
+  temp = cbind(dataset = dataset,
+               var,
+               depth,
+               stratia_f(predicted = pred, measured = obs)
+               )
+
+  return(temp)
+}
+test_stratia <- mapply(FUN = fun, variables, vars, deps, models, list("test"), list(test), SIMPLIFY = FALSE)
+test_stratia <- do.call("rbind", test_stratia)
+idx <- 4:7
+test_stratia[idx] <- apply(test_stratia[idx], 2, round, 2)
+
+train_stratia <- mapply(FUN = fun, variables, vars, deps, models, list("train"), list(train), SIMPLIFY = FALSE)
+train_stratia <- do.call("rbind", train_stratia)
+idx <- 4:7
+train_stratia[idx] <- apply(train_stratia[idx], 2, round, 2)
+
+# combine
+val2 <- rbind(train_stratia, test_stratia)
+val2 <- val2[order(val2$var, val2$depth), ]
+
 
 write.csv(ph_030_stratia, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/ph_030_validmodel_stats.csv")
 write.csv(ph_100_stratia, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/ph_100_validmodel_stats.csv")
@@ -475,33 +535,122 @@ ph_pred_uncert <- predUncertain(data2, rs2, 3, 95, "ranger")
 
 
 
-# SSURGO accuracy
+# SSURGO vs DSM accuracy
 
 ```{r}
+
+load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
+load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
+
+stratia_f <- function(measured, predicted) {
+  data.frame(
+    Bias     =      mean( predicted - measured,    na.rm = TRUE),
+    RMSE     = sqrt(mean((predicted - measured)^2, na.rm = TRUE)),
+    Rsquared =      cor(  predicted,  measured, use = "complete.obs")^2,
+    NSE      = 1 -  sum(  predicted - measured, na.rm = TRUE)^2 /
+      sum((predicted - mean(measured, na.rm = TRUE))^2, na.rm = TRUE)
+  )}
 
 # SSURGO vs KSSL at 1000-meters
 library(raster)
 library(sf)
 
-fn <- c("ssurgo_ptph30_rs_med_v2.tif", "ssurgo_ptph100_rs_med_v2.tif")
-rs <- stack(file.path("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO", fn))
+ssurgo_fn <- c(
+  ec_030  = "ssurgo_ptec30_rs_med.tif",
+  ec_100  = "ssurgo_ptec100_rs_med.tif",
+  ph_030  = "ssurgo_ptph30_rs_med_v2.tif",
+  ph_100  = "ssurgo_ptph100_rs_med_v2.tif",
+  sar_030 = "ssurgo_ptsar30_rs_med.tif",
+  sar_100 = "ssurgo_ptsar100_rs_med.tif"
+  )
+ssurgo_rs <- stack(file.path("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO", ssurgo_fn))
+names(ssurgo_rs) <- names(ssurgo_fn)
 
-ex <- extract(rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
+ssurgo_ex <- extract(ssurgo_rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
 
-stratia_f <- function(measure, predict) {
-  data.frame(
-    Bias     =      mean( predict - measure,    na.rm = TRUE),
-    RMSE     = sqrt(mean((predict - measure)^2, na.rm = TRUE)),
-    Rsquared =      cor(  predict,  measure, use = "complete.obs")^2,
-    NSE      = 1 -  sum(  predict - measure, na.rm = TRUE)^2 /
-      sum((predict - mean(measure, na.rm = TRUE))^2, na.rm = TRUE)
-  )}
+ssurgo_stratia <- rbind(
+  cbind(property = "EC", interval = "0-30",    stratia_f(ssurgo_ex$ec_ptf.000_030_cm,  ssurgo_ex$ec_030)),
+  cbind(property = "EC", interval = "30-100",  stratia_f(ssurgo_ex$ec_ptf.030_100_cm,  ssurgo_ex$ec_100)),
+  cbind(property = "pH", interval = "0-30",    stratia_f(ssurgo_ex$ph_ptf.000_030_cm,  ssurgo_ex$ph_030)),
+  cbind(property = "pH", interval = "30-100",  stratia_f(ssurgo_ex$ph_ptf.030_100_cm,  ssurgo_ex$ph_100)),
+  cbind(property = "SAR", interval = "0-30",   stratia_f(ssurgo_ex$sar.000_030_cm,     ssurgo_ex$sar_030)),
+  cbind(property = "SAR", interval = "30-100", stratia_f(ssurgo_ex$sar.030_100_cm,     ssurgo_ex$sar_100))
+)
 
-ph_030_stratia <- stratia_f(ex$ph_wa.0.30, ex$ssurgo_ptph30_rs_med_v2)
-ph_100_stratia <- stratia_f(ex$ph_wa.30.100, ex$ssurgo_ptph100_rs_med_v2)
 
-knitr::kable(round(ph_030_stratia, 2), caption = "gNATSGO pH 0-30cm")
-knitr::kable(round(ph_100_stratia, 2), caption = "gNATSGO pH 30-100cm")
+dsm_fn <- c(
+  ec_030  = "ec030_final_fill_mask.tif",
+  ec_100  = "ec100_final_fill_mask.tif",
+  ph_030  = "ph_030_qrf_mlra_pm_NULL_final4_fill_mask.tif",
+  ph_100  = "ph_100_qrf_mlra_pm_NULL_final4_fill_mask.tif",
+  esp_030 = "notr_esp_030_t25_nomlra_nafw.tif",
+  esp_100 = "notr_esp_100_t25_nomlra_nafw.tif"
+  )
+ssurgo_fn <- c(
+  ssurgo_ph_030 = "ssurgo_ptph30_rs_med.tif"
+)
+
+dsm_rs <- stack(file.path("D:/geodata/project_data/gsp-sas/predictions_v2", dsm_fn))
+names(dsm_rs) <- names(dsm_fn)
+ssurgo_r <- raster(file.path("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO", ssurgo_fn))
+
+dsm_ex <- extract(dsm_rs, as(s_mps_sf, "Spatial"), df = TRUE, sp = TRUE)@data
+ssurgo_ex <- extract(ssurgo_r, as(s_mps_sf, "Spatial"))
+dsm_ex <- cbind(dsm_ex, ssurgo_ph_030 = ssurgo_ex)
+
+dsm_stratia <- rbind(
+  cbind(property = "EC",  interval = "0-30",   stratia_f(dsm_ex$ec_ptf.000_030_cm,  dsm_ex$ec_030)),
+  cbind(property = "EC",  interval = "30-100", stratia_f(dsm_ex$ec_ptf.030_100_cm,  dsm_ex$ec_100)),
+  cbind(property = "pH",  interval = "0-30",   stratia_f(dsm_ex$ph_ptf.000_030_cm,  dsm_ex$ph_030)),
+  cbind(property = "pH",  interval = "30-100", stratia_f(dsm_ex$ph_ptf.030_100_cm,  dsm_ex$ph_100)),
+  cbind(property = "ESP", interval = "0-30",   stratia_f(dsm_ex$esp.000_030_cm, dsm_ex$esp_030)),
+  cbind(property = "ESP", interval = "30-100", stratia_f(dsm_ex$esp.030_100_cm, dsm_ex$esp_100))
+)
+
+
+stratia <- rbind(
+  cbind(source = "gNATSGO", ssurgo_stratia),
+  cbind(source = "DSM",    dsm_stratia)
+)
+stratia[4:7] <- round(stratia[4:7], 2)
+stratia$interval <- factor(stratia$interval, levels = c("0-30", "30-100")[2:1])
+stratia <- dplyr::arrange(stratia, rev(interval), property)
+
+vars <- c("Bias", "RMSE", "Rsquared", "NSE")
+test <- reshape(stratia,
+                direction = "long",
+                timevar = "metric", times = vars,
+                v.names = "value",  varying = vars
+                )
+ggplot(test, aes(x = value, y = interval, shape = source)) + 
+  geom_point() + 
+  facet_grid(property ~ metric, scales = "free_x") #, ncol = 4)
+
+dim <- c(min(dsm_ex$ph_ptf.000_030_cm, na.rm = TRUE), 
+         max(dsm_ex$ph_ptf.000_030_cm, na.rm = TRUE)
+)
+
+dsm_gg <- ggplot(dsm_ex, aes(x = ph_ptf.000_030_cm, y = ph_030)) + 
+  geom_hex(show.legend = FALSE) + 
+  geom_abline() +
+  scale_fill_viridis_c() +
+  xlim(dim) + ylim(dim) +
+  coord_fixed() +
+  xlab("pH measured") + ylab("pH predicted") +
+  ggtitle("DSM")
+  
+
+ssurgo_gg <- ggplot(dsm_ex, aes(x = ph_ptf.000_030_cm, y = ssurgo_ph_030)) + 
+  geom_hex(show.legend = FALSE) + 
+  geom_abline() +
+  scale_fill_viridis_c() +
+  xlim(dim) + ylim(dim) +
+  coord_fixed() +
+  xlab("pH measured") + ylab("pH predicted") +
+  ggtitle("SSURGO")
+
+gridExtra::grid.arrange(dsm_gg, ssurgo_gg, ncol = 2) # , top = grid::textGrob("Predictions vs KSSL", gp = grid::gpar(fontsize = 15)))
 
 ```
 

@@ -66,3 +66,219 @@ dp_gg <- ggplot(test_df, aes(y = ph_h2o, x = hzn_top, col = method)) +
 ggsave(dp_gg, filename = "test.png", device = "png", width = 6, height = 5)
 
 ```
+
+
+
+# estimate CONUS extent
+
+```{r}
+
+library(soilassessment)
+library(rgdal)
+library(raster)
+
+
+setwd("D:/geodata/project_data/gsp-sas/deliverables/maps/CONUS/")
+
+f <- c(PH_030  = "USA840_CONUS_pHMap030.tif",
+       EC_030  = "USA840_CONUS_SalinityMap030.tif", 
+       ESP_030 = "USA840_CONUS_ESPMap030.tif",
+       PH_100  = "USA840_CONUS_pHMap30100.tif",
+       EC_100  = "USA840_CONUS_SalinityMap30100.tif",
+       ESP_100 = "USA840_CONUS_ESPMap30100.tif",
+       nlcd    = "D:/geodata/project_data/gsp-sas/1km covariates/Other/nlcd_2016_conus.tif"
+       )
+rs <- stack(f)
+
+rs <- as(rs, "SpatialGridDataFrame")
+
+
+# classify salt severity
+rs$scl_030 <- .classify_salt_severity(rs$EC_030, rs$PH_030, rs$ESP_030)
+rs$sco_030  <- as.integer(rs$scl_030)
+
+rs$scl_100 <- .classify_salt_severity(rs$EC_100, rs$PH_100, rs$ESP_100)
+rs$sco_100  <- as.integer(rs$scl_100)
+
+writeGDAL(rs["sco_030"], fname = "C:/workspace2/gsp_sas_030.tif", type = "Int32", mvFlag = 0)
+writeGDAL(rs["sco_100"], fname = "C:/workspace2/gsp_sas_100.tif", type = "Int32", mvFlag = 0)
+
+
+# extract cropland
+rs$cropland <- ifelse(rs$nlcd %in% c(81, 82), 1, 0)
+rs$land     <- ifelse(! rs$nlcd %in% c(11, 0), 1, 0)
+
+
+# reproject
+rs2 <- projectRaster(stack(rs), crs = CRS("+init=epsg:5070"), method = "ngb")
+rs2 <- as(rs2, "SpatialGridDataFrame")
+
+rs2$scl_030 <- .codify_salt_severity(as.integer(rs2$sco_030))
+rs2$scl_100 <- .codify_salt_severity(as.integer(rs2$sco_100))
+
+lv <- c(31, 52, 71, 81, 82, 1000)
+lb <- c("Barren Land", "Shrub/Scrub", "Grassland/Herbacesous", "Pasture/Hay", "Cultivated Crops", "Other")
+rs2$nlcd2 <- ifelse(rs2$nlcd    %in% c(0, 11), NA,   rs2$nlcd)
+rs2$nlcd2 <- ifelse(! rs2$nlcd2 %in% lv,       1000, rs2$nlcd2)
+rs2$nlcd2 <- factor(rs2$nlcd2, levels = lv, labels = lb)
+
+rs2_cellsize <- slot(rs2, "grid")@cellsize
+acres        <- rs2_cellsize[1] * rs2_cellsize[2] * 0.0002471
+hectares     <- rs2_cellsize[1] * rs2_cellsize[2] * 0.0001
+
+
+# calculate acres
+tb_030 <- table(rs2$scl_030)
+tb_100 <- table(rs2$scl_100)
+prettyNum(tb_030 * acres, big.mark = ",", scientific = FALSE, digits = 0)
+prettyNum(tb_100 * acres, big.mark = ",", scientific = FALSE, digits = 0)
+
+
+# nlcd acres
+tb_030_nlcd <- table(rs2$nlcd2, rs2$scl_030) 
+tb_100_nlcd <- table(rs2$nlcd2, rs2$scl_100)
+
+tb_030_nlcd_df  <- reshape(as.data.frame(tb_030_nlcd), 
+                           direction = "wide",
+                           idvar     = "Var1",
+                           timevar   = "Var2",
+                           v.names   = c("Freq")
+                           )
+tb_030_nlcd_df <- tb_030_nlcd_df[order(- tb_030_nlcd_df$`Freq.very strongly saline`), ]
+tb_030_nlcd_df[-1] <- sapply(tb_030_nlcd_df[-1], function(x) {
+  prettyNum(x * acres, big.mark = ",", scientific = FALSE, digits = 0)
+})
+names(tb_030_nlcd_df)[1] <- "NLCD Class"
+names(tb_030_nlcd_df)[-1] <- gsub("Freq.", "", names(tb_030_nlcd_df[-1]))
+
+
+tb_100_nlcd_df  <- reshape(as.data.frame(tb_100_nlcd), 
+                           direction = "wide",
+                           idvar     = "Var1",
+                           timevar   = "Var2",
+                           v.names   = c("Freq")
+                           )
+tb_100_nlcd_df <- tb_100_nlcd_df[order(- tb_100_nlcd_df$`Freq.very strongly saline`), ]
+tb_100_nlcd_df[-1] <- sapply(tb_100_nlcd_df[-1], function(x) {
+  prettyNum(x * acres, big.mark = ",", scientific = FALSE, digits = 0)
+})
+names(tb_100_nlcd_df)[1] <- "NLCD Class"
+names(tb_100_nlcd_df)[-1] <- gsub("Freq.", "", names(tb_100_nlcd_df[-1]))
+
+
+# cropland acres
+idx_nlcd <- ! rs2$nlcd %in% c(0, 11)
+idx_crop <-   rs2$nlcd %in% c(81, 82)
+idx_fao  <- ! rs2$nlcd %in% c(0, 11) & (! rs2$scl_030 %in% c("nonsaline") | ! rs2$scl_100 %in% c("nonsaline"))
+idx_usda <- ! rs2$nlcd %in% c(0, 11) & (! rs2$scl_030 %in% c("nonsaline", "slightly saline") | ! rs2$scl_100 %in% c("nonsaline", "slightly saline"))
+
+# total saline hectares & acres (fao)
+prettyNum(sum(table(rs2$scl_030[idx_nlcd])) * hectares, big.mark = ",", scientific = FALSE, digits = 0)
+prettyNum(sum(table(rs2$scl_030[idx_fao]))  * hectares, big.mark = ",", scientific = FALSE, digits = 0)
+293588043 / 762849852 * 100
+prettyNum(sum(table(rs2$scl_030[idx_nlcd])) * acres,    big.mark = ",", scientific = FALSE, digits = 0)
+prettyNum(sum(table(rs2$scl_030[idx_fao]))  * acres,    big.mark = ",", scientific = FALSE, digits = 0)
+715820269 / 1885001984 * 100
+
+# total saline hectares acres (usda)
+prettyNum(sum(table(rs2$scl_030[idx_usda]))  * hectares, big.mark = ",", scientific = FALSE, digits = 0)
+67869025 / 762849852 * 100
+prettyNum(sum(table(rs2$scl_030[idx_usda]))  * acres,    big.mark = ",", scientific = FALSE, digits = 0)
+167704360 / 1885001984 * 100
+
+
+# total cropland saline hectares & acres (fao)
+prettyNum(sum(table(rs2$scl_030[idx_crop])) * hectares, big.mark = ",", scientific = FALSE, digits = 0)
+prettyNum(sum(table(rs2$scl_030[idx_crop & idx_fao])) * hectares, big.mark = ",", scientific = FALSE, digits = 0)
+63875528 / 198995822 * 100
+prettyNum(sum(table(rs2$scl_030[idx_crop]))  * acres,    big.mark = ",", scientific = FALSE, digits = 0)
+prettyNum(sum(table(rs2$scl_030[idx_crop & idx_fao]))  * acres,    big.mark = ",", scientific = FALSE, digits = 0)
+157836431/ 491718677 * 100
+
+# total cropland saline hectares acres (usda)
+prettyNum(sum(table(rs2$scl_030[idx_crop & idx_usda])) * hectares, big.mark = ",", scientific = FALSE, digits = 0)
+8012528 / 198995822 * 100 # hectares
+prettyNum(sum(table(rs2$scl_030[idx_crop & idx_usda]))  * acres,    big.mark = ",", scientific = FALSE, digits = 0)
+19798956 / 491718677 * 100 # acres
+
+```
+
+
+
+# test soilassessment R package
+
+```{r}
+test <- expand.grid(
+  EC  = sort(sapply(c(0, 0.75, 2, 4, 8, 15, 30), function(x) x + c(0, -0.05, 0.05))),
+  pH  = c(8.1, 8.2, 8.3, 8.4, 8.5, 8.6),
+  ESP = sort(sapply(c(0, 15, 30, 50, 70, 100), function(x) x + c(0, 0.1, -0.1)))
+)
+EC = test$EC; pH = test$pH; ESP = test$ESP
+EC = 4.5; pH = 8.5; ESP = 0
+test$test1 <- classCode(saltSeverity(EC, pH, ESP, method = "FAO"), "saltseverity")
+test$test2 <- .salt_severity(EC = EC, pH, ESP)
+test$test1 <- reorder(factor(test$test1), as.integer(test$test2))
+table(test$test2, test$test1, useNA = "always")
+View(test)
+
+```
+
+
+# Map
+
+```{r}
+
+library(sf)
+library(ggplot2)
+library(USAboundaries)
+# library(gmap)
+
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
+
+st <- us_states() 
+st <- subset(st, !state_name %in% c("Alaska", "Hawaii", "Puerto Rico"))
+st <- st_transform(st, crs = 5070)
+
+# conus <- read_sf(dsn = "D:/geodata/soils/SSURGO_CONUS_FY19.gdb", layer = "SAPOLYGON")
+# conus <- st_transform(conus, crs = 4326)
+# conus$state <- substr(conus$AREASYMBOL, 1, 2)
+# # conus <- conus %>% group_by(state) %>% summarize(state = state[1])
+# conus <- aggregate(conus, list(conus$state))
+# bb    <- st_bbox(conus)
+# bb    <- make_bbox(lon = bb[c(3, 1)], lat = bb[c(2, 4)])
+# gmap  <- get_map(bb, maptype = "terrain", source = "osm")
+
+s   <- s_mps_sf
+s   <- st_transform(s_mps_sf, crs = 5070)
+idx <- st_intersects(s, st) 
+idx <- sapply(idx, function(x) length(x) > 0)
+s   <- s[idx, ]
+s   <- within(s, {
+  property = NA
+  property = ifelse(!is.na(ph_ptf.000_030_cm), "pH", property)
+  property = ifelse(complete.cases(ph_ptf.000_030_cm, s$esp.000_030_cm), "pH & ESP", property)
+  property = ifelse(complete.cases(ph_ptf.000_030_cm, esp.000_030_cm, ec_ptf.000_030_cm), "pH & ESP & EC", property)
+})
+s$property <- factor(s$property, ordered = TRUE)
+s <- subset(s, !is.na(property))
+s <- s[order(s$property), ]
+# s_t <- as.data.frame(cbind(st_coordinates(s), pH = s$ph_ptf.000_030_cm))
+# 
+# brks <- c(0, 3.5, 4.5, 5.1, 5.6, 6.1, 6.6, 7.4, 7.9, 8.5, 9.5, 14)
+# s_t$ph_lev <- cut(s_t$pH, 
+#                        breaks = brks,
+#                        labels = paste(brks[-length(brks)], brks[-1], sep = "-")
+#                        )
+
+gg_gsp <- ggplot() +
+  geom_sf(data = st, fill = NA) +
+  geom_sf(data = s, aes(col = property), size = 0.2) +
+  # scale_color_manual(values = c("blue", "orange")) +
+  guides(color = guide_legend(override.aes = list(size = 2))) +
+  scale_fill_viridis_d() +
+  # ggtitle("Pedon locations") +
+  theme_bw()
+ggsave(gg_gsp, file = "C:/workspace2/pedon_location.png", dpi = 300)
+
+```
+

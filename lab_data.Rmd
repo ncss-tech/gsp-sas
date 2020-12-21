@@ -172,6 +172,11 @@ test  <- subset(h, ! pedon_key %in% clhs_pkey)
 
 # model
 # pH
+library(rms)
+
+ph_ols <- ols(ph_saturated_paste ~ rcs(ph_h2o, parms = c(0, 5.4, 6.9, 10.7)), data = train)
+latex(ph_ols)
+
 ph_lm <- lm(ph_saturated_paste ~ splines::ns(ph_h2o, 3), data = train, y = TRUE)
 plot(ph_lm)
 termplot(ph_lm, partial.resid = TRUE)
@@ -187,6 +192,9 @@ caret::RMSE(ph_test, test$ph_saturated_paste, na.rm = TRUE)
 # EC
 train <- train[row.names(train) != "288352", ]
 train$ec_t <- log(train$ec_predict_one_to_two + 0.1)
+
+
+ec_lrm <- lrm(electrical_conductivity_satx ~ rcs(log(ec_predict_one_to_two + 0.1), 3) + clay_total, data = train)
 
 ec_glm <- glm(electrical_conductivity_satx ~ splines::ns(log(ec_predict_one_to_two + 0.1), 3) + clay_total, data = train, y = TRUE, family = Gamma(link = log))
 
@@ -379,11 +387,78 @@ s_mps_sf <- st_as_sf(s_mps_sf,
                  crs = 4326
                  )
 
-write_sf(s_mps_sf, dsn = "s_mps_sf.shp", layer = "ldm")
+idx  <- grepl("^ph_ptf|^ec_ptf|^esp", names(s_mps_sf))
+s_mps_sf2 <- s_mps_sf
+s_mps_sf2[idx] <- lapply(st_drop_geometry(s_mps_sf2[idx]), function(x) {ifelse(is.na(x), - 9999, x)})
+write_sf(s_mps_sf2, dsn = "D:/geodata/project_data/gsp-sas/s_mps_sf.shp", layer = "ldm")
 
 # save(ldm, spc, clhs_pkey, ph_lm, ec_glm, s_mps_l, s_wa_w, s_mps_sf, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
-load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
-
 
 ```
 
+
+# Map
+
+```{r}
+library(ggmap)
+library(sf)
+library(ggplot2)
+library(USAboundaries)
+
+load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
+
+st <- us_states() 
+st <- subset(st, !state_name %in% c("Alaska", "Hawaii", "Puerto Rico"))
+st <- st_transform(st, crs = 5070)
+
+# conus <- read_sf(dsn = "D:/geodata/soils/SSURGO_CONUS_FY19.gdb", layer = "SAPOLYGON")
+# conus <- st_transform(conus, crs = 4326)
+# conus$state <- substr(conus$AREASYMBOL, 1, 2)
+# # conus <- conus %>% group_by(state) %>% summarize(state = state[1])
+# conus <- aggregate(conus, list(conus$state))
+# bb    <- st_bbox(conus)
+# bb    <- make_bbox(lon = bb[c(3, 1)], lat = bb[c(2, 4)])
+# gmap  <- get_map(bb, maptype = "terrain", source = "osm")
+
+s   <- s_mps_sf
+s   <- st_transform(s_mps_sf, crs = 5070)
+idx <- st_intersects(s, st) 
+idx <- sapply(idx, function(x) length(x) > 0)
+s   <- s[idx, ]
+s   <- within(s, {
+  property = NA
+  property = ifelse(!is.na(ph_ptf.000_030_cm), "pH", property)
+  property = ifelse(complete.cases(ph_ptf.000_030_cm, s$esp.000_030_cm), "pH & ESP", property)
+  property = ifelse(complete.cases(ph_ptf.000_030_cm, esp.000_030_cm, ec_ptf.000_030_cm), "pH & ESP & EC", property)
+})
+s$property <- factor(s$property, ordered = TRUE)
+s <- subset(s, !is.na(property))
+s <- s[order(s$property), ]
+# s_t <- as.data.frame(cbind(st_coordinates(s), pH = s$ph_ptf.000_030_cm))
+# 
+# brks <- c(0, 3.5, 4.5, 5.1, 5.6, 6.1, 6.6, 7.4, 7.9, 8.5, 9.5, 14)
+# s_t$ph_lev <- cut(s_t$pH, 
+#                        breaks = brks,
+#                        labels = paste(brks[-length(brks)], brks[-1], sep = "-")
+#                        )
+
+gg_gsp <- ggplot() +
+  geom_sf(data = st, fill = NA) +
+  geom_sf(data = s, aes(col = property), size = 0.2) +
+  # scale_color_manual(values = c("blue", "orange")) +
+  guides(color = guide_legend(override.aes = list(size = 2))) +
+  scale_fill_viridis_d() +
+  # ggtitle("Pedon locations") +
+  theme_bw()
+ggsave(gg_gsp, file = "test.png", dpi = 300)
+  
+# geom_hex(data = s_t, aes(x = X, y = Y, fill = pH)) + 
+  # scale_fill_viridis_c()
+
+library(tmap)
+
+tm_shape(st) + tm_borders() +
+tm_shape(s_pH) + tm_dots(col = "blue")
+
+
+```

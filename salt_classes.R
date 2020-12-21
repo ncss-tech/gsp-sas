@@ -514,3 +514,6 @@ mc_err_l <- c(mc_err, fun = mean, na.rm = TRUE, progress = "text")
 mc_err_final <- do.call(mosaic, mc_err_l)
 writeRaster(mc_err_final, filename = "D:/geodata/project_data/gsp-sas/predictions_v2/Salinity_ME_100.tif", overwrite = TRUE, progress = "text")
 
+
+
+# calculate
