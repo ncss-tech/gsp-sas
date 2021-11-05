@@ -539,9 +539,9 @@ ph_pred_uncert <- predUncertain(data2, rs2, 3, 95, "ranger")
 
 ```{r}
 
-load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/training_data.RData")
-load(file = "C:/Users/Stephen.Roecker/Nextcloud/projects/2020_gsp-sas/ph_rf.RData")
-load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
+load(file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/training_data.RData")
+load(file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/ph_rf.RData")
+load(file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/LDM-compact_20200709.RData")
 
 stratia_f <- function(measured, predicted) {
   data.frame(
@@ -557,8 +557,8 @@ library(raster)
 library(sf)
 
 ssurgo_fn <- c(
-  ec_030  = "ssurgo_ptec30_rs_med.tif",
-  ec_100  = "ssurgo_ptec100_rs_med.tif",
+  ec_030  = "gnatsgo_fy20_1km_ec_r.i0-30_wgs84.tif",
+  ec_100  = "gnatsgo_fy20_1km_ec_r.i30-100_wgs84.tif",
   ph_030  = "ssurgo_ptph30_rs_med_v2.tif",
   ph_100  = "ssurgo_ptph100_rs_med_v2.tif",
   sar_030 = "ssurgo_ptsar30_rs_med.tif",

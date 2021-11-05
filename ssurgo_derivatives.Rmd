@@ -12,7 +12,7 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 
 # load pedotransfer functions
-load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RData")
+load(file = "C:/Users/stephen.roecker/Box/data/LDM-compact_20200709.RData")
 
 ```
 
@@ -23,7 +23,7 @@ load(file = "C:/Users/stephen.roecker/Nextcloud/data/ldm/LDM-compact_20200709.RD
 ```{r mlra}
 library(dplyr)
 
-nmo <- read.csv("C:/Users/stephen.roecker/Nextcloud/data/mukey_mlra_overlap.csv", stringsAsFactors = FALSE)
+nmo <- read.csv("mukey_mlra_overlap.csv", stringsAsFactors = FALSE)
 nmo$mukey <- as.character(nmo$mukey)
 nmo <- nmo[with(nmo, order(mukey, - membership)), ]
 # nmo <- nmo[! duplicated(nmo$mukey), ]
@@ -49,12 +49,12 @@ library(soilDB)
 f_us <- fetchGDB(dsn ="C:/geodata/soils/gNATSGO_CONUS_FY20.gdb", WHERE = "areasymbol LIKE '%'")
 mu_us <- get_mapunit_from_GDB(dsn = "C:/geodata/soils/gNATSGO_CONUS_FY20.gdb", stats = TRUE)
 # save(f_us, mu_us, file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo_fy20.RData")
-load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/gnatsgo_fy20.RData")
+load(file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/gsp_salinity_fetchGDB.RData")
 
-f_statsgo <- fetchGDB(dsn ="C:/geodata/soils/gNATSGO_CONUS_FY20.gdb", WHERE = "areasymbol = 'US'")
+f_statsgo <- fetchGDB(dsn ="D:/geodata/soils/gNATSGO_CONUS_FY20.gdb", WHERE = "areasymbol = 'US'")
 
 f_us <- f_us[! f_us$mukey %in% f_statsgo$mukey]
-f_us <- aqp::union(list(f_us, f_statsgo))
+f_us <- aqp::combine(list(f_us, f_statsgo))
 
 missing_mukeys <- mu_us[is.na(mu_us$n_component), "mukey"]
 
@@ -66,7 +66,7 @@ f_mis <- h
 depths(f_mis) <- cokey ~ hzdept_r + hzdepb_r
 site(f_mis) <- s
 
-f_us <- aqp::union(list(f_us, f_mis))
+f_us <- aqp::combine(list(f_us, f_mis))
 
 
 # generate unique (?) mukeys (aka nationalmusym)
@@ -89,7 +89,7 @@ f_us <- aqp::union(list(f_us, f_mis))
 library(aqp)
 library(dplyr)
 
-load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
+load(file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/LDM-compact_20200709.RData")
 
 co_agg <- aqp::segment(aqp::horizons(f_us), intervals = c(0, 30, 100), hzdepcols = c("hzdept_r", "hzdepb_r")) %>%
   mutate(ec_predict_one_to_two = ec_r,
@@ -98,7 +98,7 @@ co_agg <- aqp::segment(aqp::horizons(f_us), intervals = c(0, 30, 100), hzdepcols
          )
 # pedotransfer functions
 co_agg$ph_ptf <- predict(ph_lm,  co_agg)
-co_agg$ec_ptf <- predict(ec_glm, co_agg, type = "response")
+# co_agg$ec_ptf <- predict(ec_glm, co_agg, type = "response")
 # aggregate components
 co_agg <- co_agg %>%
   mutate(hzdepb_r = ifelse(is.na(hzdepb_r), hzdept_r + 1, hzdepb_r),
@@ -106,7 +106,7 @@ co_agg <- co_agg %>%
          ) %>%
   # values come back NA if weights (w) are missing
   group_by(cokey, segment_id) %>%
-  summarize(ec_r  = weighted.mean(ec_ptf, w = hzdepm_r, na.rm = TRUE),
+  summarize(ec_r  = weighted.mean(ec_r, w = hzdepm_r, na.rm = TRUE),
             ph_r  = log10(weighted.mean(1/10^-ph_ptf, w = hzdepm_r, na.rm = TRUE)),
             sar_r = weighted.mean(sar_r, w = hzdepm_r, na.rm = TRUE)
             ) %>%
@@ -135,7 +135,7 @@ mu_agg_h2 <- reshape(mu_agg_h,
 attributes(mu_agg_h2)$reshapeWide <- NULL
 
 # landform
-mu_agg_landform <- site(f_us) %>%
+mu_agg_landform <- aqp::site(f_us) %>%
   filter(!is.na(landform)) %>%
   group_by(mukey, landform) %>%
   summarize(comppct_r = sum(comppct_r, na.rm = TRUE)) %>%
@@ -145,7 +145,7 @@ mu_agg_landform <- site(f_us) %>%
 
 # pmkind
 # find components with missing pmkind
-mis_mukeys <- site(f_us) %>% 
+mis_mukeys <- aqp::site(f_us) %>% 
   group_by(mukey) %>% 
   summarize(na = all(is.na(pmkind))) %>% 
   ungroup() %>% 
@@ -166,15 +166,15 @@ mis_compname_pmkind <- aqp::site(f_us) %>%
   select(- comppct_r)
 
 # replace components with missing pmkind from same named components from gNATSGO
-s_tmp <- site(f_us)
+s_tmp <- aqp::site(f_us)
 s_tmp$compname <- gsub("^ | $", "", tolower(s_tmp$compname))
 mis_compname <- subset(s_tmp, 
                        compname %in% tolower(ss$soilseriesname)
                        & !compname %in% unique(s_tmp$compname[!is.na(s_tmp$pmkind)]) 
                        # & !compname %in% tolower(mis_compname_pmkind$compname)
                        )
-# osd <- lapply(mis_compname, function(x) soilDB::fetchOSD(x, extended = TRUE))
-# names(osd) <- mis_compname
+osd <- lapply(unique(mis_compname$compname), function(x) soilDB::fetchOSD(x, extended = TRUE))
+names(osd) <- unique(mis_compname$compname)
 osd_pmkind <- lapply(osd, function(x) x$pmkind)
 idx <- sapply(osd_pmkind, is.data.frame)
 osd_pmkind <- do.call("rbind", lapply(osd_pmkind[idx], function(x) x$pmkind[1]))
@@ -182,7 +182,7 @@ osd_pmkind <- data.frame(compname = rownames(osd_pmkind), pmkind = osd_pmkind[, 
 
 
 # compute dominant condition of parent material by mukey
-s <- site(f_us) %>% 
+s <- aqp::site(f_us) %>% 
   mutate(compname = tolower(compname)) %>%
   left_join(mis_compname_pmkind, by = "compname") %>%
   left_join(osd_pmkind, by = "compname") %>%
@@ -308,7 +308,7 @@ mu_agg <- within(mu_agg, {
 
 
 # save(f_us, mu_us, mu_agg, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/gsp_salinity_fetchGDB.RData")
-write.csv(mu_agg, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/gnatsgo_gsp_muaggatt.csv", row.names = FALSE)
+write.csv(mu_agg, file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/gnatsgo_gsp_muaggatt.csv", row.names = FALSE)
 
 ```
 
@@ -318,7 +318,7 @@ write.csv(mu_agg, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-s
 
 ```{r}
 
-load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/gsp_salinity_fetchGDB.RData")
+load(file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/gsp_salinity_fetchGDB.RData")
 
 mu_agg <- within(mu_agg, {
   mukey   = as.numeric(mukey)
@@ -327,17 +327,15 @@ mu_agg <- within(mu_agg, {
 names(mu_agg)[1] <- "ID"
 
 mlra <- "D:/geodata/project_data/gsp-sas/1km covariates/Other/mlra_rs.tif"
-r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/Other/gnatsgo_pmkind.tif")
-gdalUtils::gdalwarp(
+r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/statsgo_pmkind3.tif")
+gdalUtilities::gdalwarp(
     srcfile = mlra,
     dstfile = gsub(".tif", "_v2.tif", mlra),
     t_srs = proj4string(r), 
     te = bbox(r),
     r = "near",
     tr = res(r),
-    ot = "Int32",
-    verbose   = TRUE,
-    overwrite = TRUE
+    ot = "Int32"
 )
 
 
@@ -345,7 +343,8 @@ library(raster)
 
 gnatsgo <- "D:/geodata/soils/gnatsgo_fy20_30m.tif"
 r <- raster(gnatsgo)
-gdalUtils::gdalwarp(
+crs(r) <- sf::st_crs(5070)$proj4string
+gdalUtilities::gdalwarp(
     srcfile = gnatsgo,
     dstfile = gsub("30m.tif", "120m.tif", gnatsgo),
     t_srs = proj4string(r), 
@@ -353,25 +352,68 @@ gdalUtils::gdalwarp(
     r = "mode",
     tr = c(120, 120),
     ot = "Int32",
-    verbose   = TRUE,
     overwrite = TRUE
 )
 
-r <- raster("D:/geodata/soils/gnatsgo_fy20_1km.tif")
+r <- raster("D:/geodata/soils/gnatsgo_fy20_30m.tif")
 # r2 <- r[1:100, 1:100, drop = FALSE]
 # r2 <- ratify(r2)
 # rat <- levels(r2)[[1]]
 levels(r) <- mu_agg
 
-vars <- c("pmkind3", "ph_r.i0-30", "ph_r.i30-100", "ec_r.i0-30", "ec_r.i30-100")[1]
-lapply(vars, function(x) {
+vars <- c("pmkind3", "ph_r.i0-30", "ph_r.i30-100", "ec_r.i0-30", "ec_r.i30-100")
+
+# ratify
+lapply(vars[4:5], function(x) {
   cat(x, as.character(Sys.time()), "\n")
   # beginCluster(type = "SOCK")
   deratify(r, att = x, 
-           filename = paste0("D:/geodata/soils/gnatsgo_fy20_1km_", x, ".tif"),
+           filename = paste0("D:/geodata/soils/gnatsgo_fy20_300m_", x, ".tif"),
            options = c("COMPRESS=DEFLATE"), 
            overwrite = TRUE, progress = "text" 
            )
+  # endCluster()
+  cat(x, as.character(Sys.time()), "\n")
+  })
+
+
+# upscale
+lapply(vars[4:5], function(x) {
+  cat(x, as.character(Sys.time()), "\n")
+  # beginCluster(type = "SOCK")
+  tmp <- paste0("D:/geodata/soils/gnatsgo_fy20_120m_", x, ".tif")
+  
+  gdalUtilities::gdalwarp(
+    srcfile = tmp,
+    dstfile = gsub("120m", "1km", tmp),
+    t_srs = proj4string(r), 
+    te = bbox(r),
+    r = "average",
+    tr = c(1000, 1000),
+    overwrite = TRUE
+    )
+  # endCluster()
+  cat(x, as.character(Sys.time()), "\n")
+  })
+
+
+# reproject
+r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/ISRIC/CONUS/SLPMRG5_CONUS.tif")
+
+lapply(vars[4:5], function(x) {
+  cat(x, as.character(Sys.time()), "\n")
+  # beginCluster(type = "SOCK")
+  tmp <- paste0("D:/geodata/soils/gnatsgo_fy20_1km_", x, ".tif")
+  
+  gdalUtilities::gdalwarp(
+    srcfile = tmp,
+    dstfile = gsub(".tif", "_wgs84.tif", tmp),
+    t_srs = proj4string(r), 
+    te = bbox(r),
+    r = "bilinear",
+    tr = res(r),
+    overwrite = TRUE
+    )
   # endCluster()
   cat(x, as.character(Sys.time()), "\n")
   })
@@ -462,12 +504,13 @@ mu$idx <- as.character(cut(1:nrow(mu), breaks = idx))
 f <- by(mu, mu$idx, function(x){
   f <- fetchSDA(WHERE = paste0("mukey IN ('", paste0(x$mukey, collapse = "', '"), "')"), childs = FALSE, duplicates = TRUE)
 })
-f <- union(f)
+f <- lapply(f, function(x) x)
+f <- aqp::combine(f)
 
 
 
-# pH weighted average
-load(file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/LDM-compact_20200709.RData")
+# weighted averages
+load(file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/LDM-compact_20200709.RData")
 
 co_agg <- aqp::segment(aqp::horizons(f), intervals = c(0, 30, 100), hzdepcols = c("hzdept_r", "hzdepb_r")) %>%
   mutate(ph_h2o     = ph1to1h2o_r,
@@ -481,7 +524,8 @@ co_agg <- co_agg %>%
          ) %>%
   # values come back NA if weights (w) are missing
   group_by(cokey, segment_id) %>%
-  summarize(ph_r  = log10(weighted.mean(1/10^-ph_ptf, w = hzdepm_r, na.rm = TRUE))
+  summarize(ph_r  = log10(weighted.mean(1/10^-ph_ptf, w = hzdepm_r, na.rm = TRUE)),
+            ec_r  = weighted.mean(ec_r, w = hzdepm_r, na.rm = TRUE)
             ) %>%
   ungroup() %>%
   right_join(select(aqp::site(f), mukey, cokey, comppct_r), by = "cokey")
@@ -491,7 +535,8 @@ co_agg <- co_agg %>%
 mu_agg_h <- co_agg %>%
   mutate(comppct_r = ifelse(is.na(comppct_r), 0, comppct_r)) %>%
   group_by(mukey, segment_id) %>%
-  summarize(ph_r = log10(weighted.mean(1/10^-ph_r, w = comppct_r, na.rm = TRUE))
+  summarize(ph_r = log10(weighted.mean(1/10^-ph_r, w = comppct_r, na.rm = TRUE)),
+            ec_r = weighted.mean(ec_r, w = comppct_r, na.rm = TRUE)
             ) %>%
   ungroup() %>%
   filter(!is.na(segment_id)) %>%
@@ -501,7 +546,7 @@ mu_agg_h2 <- reshape(mu_agg_h,
                      direction = "wide",
                      idvar     = "mukey",
                      timevar   = "segment_id",
-                     v.names   = c("ph_r")
+                     v.names   = c("ph_r", "ec_r")
                      )
 attributes(mu_agg_h2)$reshapeWide <- NULL
 
@@ -573,12 +618,14 @@ summary(mu_agg_h2)
 g_r <- raster("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO_move/statsgo_mukey.tif")
 levels(g_r) <- mu_agg_h2
 
-vars <- c("pmkind3", "ph_r.i0-30", "ph_r.i30-100")[2:3]
+vars <- c("pmkind3", "ph_r.i0-30", "ph_r.i30-100", "ec_r.i0-30", "ec_r.i30-100")[4:5]
 lapply(vars, function(x) {
   cat(x, as.character(Sys.time()), "\n")
   # beginCluster(type = "SOCK")
+  tmp <- paste0("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/statsgo_", x, ".tif")
+  
   raster::deratify(g_r, att = x, 
-           filename = paste0("D:/geodata/project_data/gsp-sas/1km covariates/SSURGO/statsgo_", x, ".tif"),
+           filename = tmp,
            options = c("COMPRESS=DEFLATE"), 
            overwrite = TRUE, progress = "text" 
            )
