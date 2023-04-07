@@ -23,7 +23,7 @@ load(file = "C:/Users/stephen.roecker/Box/data/LDM-compact_20200709.RData")
 ```{r mlra}
 library(dplyr)
 
-nmo <- read.csv("mukey_mlra_overlap.csv", stringsAsFactors = FALSE)
+nmo <- read.csv("C:/Users/stephen.roecker/OneDrive - USDA/data/mukey_mlra_overlap.csv", stringsAsFactors = FALSE)
 nmo$mukey <- as.character(nmo$mukey)
 nmo <- nmo[with(nmo, order(mukey, - membership)), ]
 # nmo <- nmo[! duplicated(nmo$mukey), ]
@@ -46,27 +46,30 @@ nmo <- nmo %>%
 library(aqp)
 library(soilDB)
 
-f_us <- fetchGDB(dsn ="C:/geodata/soils/gNATSGO_CONUS_FY20.gdb", WHERE = "areasymbol LIKE '%'")
-mu_us <- get_mapunit_from_GDB(dsn = "C:/geodata/soils/gNATSGO_CONUS_FY20.gdb", stats = TRUE)
-# save(f_us, mu_us, file = "C:/Users/stephen.roecker/Nextcloud/data/gnatsgo_fy20.RData")
-load(file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/gsp_salinity_fetchGDB.RData")
+f_gnatsgo <- fetchGDB(dsn ="G:/archive/gNATSGO_CONUS_FY20.gdb", WHERE = "areasymbol != 'US'")
+mu_us <- get_mapunit_from_GDB(dsn = "G:/archive/gNATSGO_CONUS_FY20.gdb", stats = TRUE)
 
-f_statsgo <- fetchGDB(dsn ="D:/geodata/soils/gNATSGO_CONUS_FY20.gdb", WHERE = "areasymbol = 'US'")
+f_statsgo <- fetchGDB(dsn = "D:/geodata/soils/wss_gsmsoil_US_20161013.gdb", WHERE = "areasymbol = 'US'", childs = TRUE)
 
-f_us <- f_us[! f_us$mukey %in% f_statsgo$mukey]
-f_us <- aqp::combine(list(f_us, f_statsgo))
+f_us2 <- f_natsgo[! f_natsgo$mukey %in% f_statsgo$mukey]
+f_us  <- aqp::combine(list(f_us2, f_statsgo))
 
 missing_mukeys <- mu_us[is.na(mu_us$n_component), "mukey"]
 
-# missing mukeys
-f_sda <- fetchSDA(WHERE = paste0("mukey IN ('", paste0(missing_mukeys, collapse = "', '"), "')"), duplicates = TRUE)
-s <- site(f_sda)[siteNames(f_us)]
-h <- horizons(f_sda)[horizonNames(f_us)]
-f_mis <- h
-depths(f_mis) <- cokey ~ hzdept_r + hzdepb_r
-site(f_mis) <- s
+# save(f_us, mu_us, f_statsgo, file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/gnatsgo_fy20.RData")
+load(file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/gnatsgo_fy20.RData")
+# load(file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/gsp_salinity_fetchGDB.RData")
 
-f_us <- aqp::combine(list(f_us, f_mis))
+
+# missing mukeys
+# f_sda <- fetchSDA(WHERE = paste0("mukey IN ('", paste0(missing_mukeys, collapse = "', '"), "')"), duplicates = TRUE)
+# s <- site(f_sda)[siteNames(f_us)]
+# h <- horizons(f_sda)[horizonNames(f_us)]
+# f_mis <- h
+# depths(f_mis) <- cokey ~ hzdept_r + hzdepb_r
+# site(f_mis) <- s
+# 
+# f_us <- aqp::combine(list(f_us, f_mis))
 
 
 # generate unique (?) mukeys (aka nationalmusym)
@@ -221,7 +224,22 @@ mu_agg <- mu_us["mukey"] %>%
   left_join(nmo, by = "mukey")
 
 
-# save(f_us, mu_us, mu_agg, file = "gsp_salinity_fetchGDB.RData")
+f_us$drainagecl2 <- factor(f_us$drainagecl, rev(levels(f_us$drainagecl)), ordered = TRUE)
+
+mu_agg_pd_pct <- site(f_us) %>%
+  group_by(mukey, drainagecl2) %>%
+  summarize(comppct_r = sum(comppct_r, na.rm = TRUE)) %>%
+  arrange(mukey, - comppct_r, drainagecl2) %>%
+  ungroup() %>%
+  group_by(mukey) %>%
+  summarize(pd_pct = sum(comppct_r[drainagecl2 <= "Somewhat poorly drained"], na.rm = TRUE),
+            drainagecl = drainagecl2[1]
+            ) %>%
+  ungroup()
+
+write.csv(mu_agg_pd_pct, "mu_agg_drainagecl_fy20.csv", row.names = FALSE)
+
+# save(f_us, f_statsgo, mu_us, mu_agg, osd, file = "gsp_salinity_fetchGDB_20221017.RData")
 
 ```
 
@@ -231,7 +249,9 @@ mu_agg <- mu_us["mukey"] %>%
 
 ```{r}
 
-load(file = "gsp_salinity_fetchGDB.RData")
+setwd("C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/")
+
+load(file = "gsp_salinity_fetchGDB_20221017.RData")
 
 library(dplyr)
 
@@ -307,8 +327,8 @@ mu_agg <- within(mu_agg, {
   })
 
 
-# save(f_us, mu_us, mu_agg, file = "C:/Users/stephen.roecker/Nextcloud/projects/2020_gsp-sas/gsp_salinity_fetchGDB.RData")
-write.csv(mu_agg, file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/gnatsgo_gsp_muaggatt.csv", row.names = FALSE)
+# save(f_us, mu_us, mu_agg, osd, file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/gsp_salinity_fetchGDB_20220909.csv.RData")
+write.csv(mu_agg, file = "C:/Users/stephen.roecker/OneDrive - USDA/projects/gsp-sas/gnatsgo_gsp_muaggatt_20221003.csv", row.names = FALSE)
 
 ```
 
