@@ -57,11 +57,11 @@ co_avg <- collapse::collap(
 
 
 co_avg2 <- reshape(
-  data = co_avg, 
+  data      = co_avg, 
   direction = "wide",
-  idvar = "cokey",
-  timevar = "segment_id",
-  v.names = c("ec_r", "sar_r", "ph1to1h2o_r", "h")
+  idvar     = "cokey",
+  timevar   = "segment_id",
+  v.names   = c("ec_r", "sar_r", "ph1to1h2o_r", "h")
 )
 
 
@@ -69,6 +69,7 @@ mu_avg <- merge(site(f), co_avg2, by = "cokey", all.x = TRUE)
 mu_avg$statsgo <- mu_avg$mukey %in% mu$mukey[mu$areasymbol == "US"]
 idx <- grep("cokey|mukey|ec_|sar_|ph1|^h.0|statsgo", names(mu_avg))
 mu_avg <- mu_avg[idx]
+
 
 mu_avg <- collapse::collap(
   mu_avg,
@@ -87,6 +88,7 @@ mu_avg <- within(mu_avg, {
 # saveRDS(mu_avg, "mu_avg_sas.rds")
 mu_avg <- readRDS(file.path("C:/workspace2", "mu_avg_sas.rds"))
 
+
 esp <- function(SAR) {
   (100 * (-0.0126 + 0.01475 * SAR)) / 
   (1   + (-0.0126 + 0.01475 * SAR))
@@ -98,9 +100,9 @@ mu_avg <- within(mu_avg, {
   ph_100[is.infinite(ph_100)] <- 0
   
   ph_h2o     = ph_030
-  ph_030_sat = predict(ph_lm, data.frame(ph_h2o))
+  # ph_030_sat = predict(ph_lm, data.frame(ph_h2o))
   ph_h2o     = ph_100
-  ph_100_sat = predict(ph_lm, data.frame(ph_h2o))
+  # ph_100_sat = predict(ph_lm, data.frame(ph_h2o))
                         
   ESP_030 = esp(`sar_r.000-030`)
   ESP_100 = esp(`sar_r.030-100`)
@@ -112,7 +114,15 @@ mu_avg <- within(mu_avg, {
   SAS_100x = classCode(saltSeverity(ph = ph_030, ec = `ec_r.030-100`, esp = ESP_100), "saltseverity")
 })
 
-ggplot(data.frame(ph1 = mu_avg$`ph1to1h2o_r.000-030`, ph2 = mu_avg$ph_030), aes(ph1, ph2)) + geom_hex(bins = 50) +  scale_fill_binned(colours = viridis::viridis(50, option = "D"), )
+
+idx <- !complete.cases(mu_avg$`ec_r.000-030`, mu_avg$ph_030, mu_avg$ESP_030)
+test <- mu_avg[is.na(mu_avg$SAS_030), ]
+table(idx)
+table(!is.na(test$SAS_030))
+
+ggplot(data.frame(ph1 = mu_avg$`ph1to1h2o_r.000-030`, ph2 = mu_avg$ph_030), aes(ph1, ph2)) + geom_hex(bins = 50) +  
+  scale_fill_binned(colours = viridis::viridis(50, option = "D"), )
+
 
 table(mu_avg$SAS_030, mu_avg$SAS_030x)
 test <- subset(mu_avg, SAS_030x == "Saline-sodic" & SAS_030 == "slightly sodic")
@@ -157,19 +167,33 @@ derat <- function(l, dat, vars) {
 }
 derat(l, dat, c("SAS_030", "SAS_100"))
 
-l2 <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}_cat.tif", full.names = TRUE)
 
+# l2 <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}_cat.tif", full.names = TRUE)
 # lf <- lapply(l2, rast)
 # lf$filename = "test.tif"
 # lf$overwrite = TRUE
 # do.call("merge", lf)
-l2 <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}_SAS_030.tif")
-test <- sprc(l2)
-merge(test, filename = "gnatsgo_SAS_030.tif", overwrite = TRUE)
 
-l3 <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}_SAS_100.tif", full.names = TRUE)
-test <- sprc(l3)
-system.time(merge(test, filename = "gnatsgo_SAS_100.tif", overwrite = TRUE))
+lf_030 <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}_SAS_030.tif", full.names = TRUE)
+test <- sprc(lf_030)
+fn <- "gnatsgo_Oct22_SAS_030.tif"
+merge(test, filename = fn, datatype = "INT1U")
+# if (file.path(fp, fn) |> file.exists()) file.remove(lf_030)
+
+
+lf_100 <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}_SAS_100.tif", full.names = TRUE)
+test <- sprc(lf_100)
+fn <- "gnatsgo_Oct22_SAS_100.tif"
+merge(test, filename = fn, datatype = "INT1U")
+# if (file.path(fp, fn) |> file.exists()) file.remove(lf_100)
+
+fn <- "gnatsgo_Oct22_SAS_030.tif"
+test <- rast(fn)
+writeRaster(test, "gnatsgo_Oct22_SAS_030_INT1U.tif", datatype = "INT1U")
+
+fn <- "gnatsgo_Oct22_SAS_100.tif"
+test <- rast(fn)
+writeRaster(test, "gnatsgo_Oct22_SAS_100_INT1U.tif", datatype = "INT1U")
 
 
 # gdalUtilities::gdalbuildvrt(gdalfile = unlist(l2), output.vrt = "test.vrt", dryrun = TRUE)
