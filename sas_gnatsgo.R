@@ -19,7 +19,7 @@ load(file = "gnatsgo_Oct22.RData")
 gnatsgo_r <- rast(file.path(fp, "gNATSGO-mukey.tif"))
 
 
-h_avg <- horizons(f) |>
+h_seg <- horizons(f) |>
   within({
     hzdep_thk =  (hzdepb_r - hzdept_r) / 2
     h = 1/10^-ph1to1h2o_r
@@ -28,15 +28,44 @@ h_avg <- horizons(f) |>
   subset(!is.na(cokey), select = c(cokey, segment_id, ec_r, sar_r, ph1to1h2o_r, h, hzdep_thk))
 
 
+vars <- c("mukey", "cokey", "comppct_r")
+h_seg2 <- merge(h_avg, site(f)[vars], by = "cokey", all.x = TRUE)
+
 co_avg <- collapse::collap(
-  h_avg, 
-  by   = list(cokey = h_avg$cokey, segment_id = h_avg$segment_id),
-  cols = 3:6,
+  h_seg2, 
+  by = ec_r + sar_r + ph1to1h2o_r + h ~ mukey + cokey + comppct_r + segment_id,
   keep.w = FALSE,
   FUN  = collapse::fmean, 
-  w    = h_avg$hzdep_thk,
+  w    =  ~ hzdep_thk,
   na.rm = TRUE
-  )
+)
+
+mu_avg <- collapse::collap(
+  co_avg,
+  by = ec_r + sar_r + ph1to1h2o_r +h ~ mukey + segment_id,
+  keep.w = FALSE,
+  FUN = collapse::fmean,
+  w   = ~ comppct_r,
+  na.rm = TRUE
+)
+
+mu_avg <- reshape(
+  data      = mu_avg, 
+  direction = "wide",
+  idvar     = "mukey",
+  timevar   = "segment_id",
+  v.names   = c("ec_r", "sar_r", "ph1to1h2o_r", "h")
+)
+
+mu_avg$statsgo <- mu_avg$mukey %in% mu$mukey[mu$areasymbol == "US"]
+idx <- grepl("NA$", names(mu_avg))
+mu_avg <- mu_avg[!idx]
+
+mu_avg <- within(mu_avg, {
+  ph_030 = log10(`h.000-030`)
+  ph_100 = log10(`h.030-100`)
+  mukey  = as.integer(mukey)
+})
 
 # co_avg2 <- h_avg %>%
 #   group_by(cokey, segment_id) %>%
@@ -56,42 +85,12 @@ co_avg <- collapse::collap(
 # View(co_avg[idx])
 
 
-co_avg2 <- reshape(
-  data      = co_avg, 
-  direction = "wide",
-  idvar     = "cokey",
-  timevar   = "segment_id",
-  v.names   = c("ec_r", "sar_r", "ph1to1h2o_r", "h")
-)
-
-
-mu_avg <- merge(site(f), co_avg2, by = "cokey", all.x = TRUE)
-mu_avg$statsgo <- mu_avg$mukey %in% mu$mukey[mu$areasymbol == "US"]
-idx <- grep("cokey|mukey|ec_|sar_|ph1|^h.0|statsgo", names(mu_avg))
-mu_avg <- mu_avg[idx]
-
-
-mu_avg <- collapse::collap(
-  mu_avg,
-  by = list(mukey = mu_avg$mukey),
-  cols = 3:10,
-  keep.w = FALSE,
-  FUN = collapse::fmean,
-  w   = mu_avg$comppct_r,
-  na.rm = TRUE
-)
-mu_avg <- within(mu_avg, {
-  ph_030 = log10(`h.000-030`)
-  ph_100 = log10(`h.030-100`)
-  })
-
 # saveRDS(mu_avg, "mu_avg_sas.rds")
 mu_avg <- readRDS(file.path("C:/workspace2", "mu_avg_sas.rds"))
 
-
 esp <- function(SAR) {
   (100 * (-0.0126 + 0.01475 * SAR)) / 
-  (1   + (-0.0126 + 0.01475 * SAR))
+    (1   + (-0.0126 + 0.01475 * SAR))
 }
 
 
@@ -114,6 +113,37 @@ mu_avg <- within(mu_avg, {
   SAS_100x = classCode(saltSeverity(ph = ph_030, ec = `ec_r.030-100`, esp = ESP_100), "saltseverity")
 })
 
+
+# compare with SDA
+le <- get_legend_from_SDA(WHERE = "areasymbol LIKE 'CA%'")
+test <- get_SDA_property(
+  "ec_r", 
+  method = "Weighted Average", 
+  areasymbols = le$areasymbol, 
+  top_depth = 0, bottom_depth = 30, 
+  include_minors = TRUE, 
+  miscellaneous_areas = TRUE
+)
+test2 <- merge(test, mu_avg, by = "mukey", all.x = TRUE)
+vars <- c("mukey", "ec_r", "ec_r.000-030")
+test3 <- within(test2[vars], {
+  dif = ec_r - `ec_r.000-030`
+})
+
+
+f2 <- f[f$mukey == "1860756"]
+View(subset(horizons(f2), select = c(cokey, ec_r, sar_r, ph1to1h2o_r, hzdept_r)))
+h2 <- horizons(f2)
+
+h3 <- h2 %>% 
+  select(cokey, ec_r, sar_r, ph1to1h2o_r, hzdept_r, hzdepb_r) %>% 
+  mutate(thk = hzdepb_r - hzdept_r) %>% 
+  left_join(site(f2), by = "cokey") %>% 
+  segment(intervals = c(0, 30), hzdepcols = c("hzdept_r", "hzdepb_r")) %>% 
+  group_by(mukey, cokey, comppct_r) %>% 
+  summarize(ec = weighted.mean(ec_r, w = thk)) %>%
+  group_by(mukey) %>%
+  summarize(ec = weighted.mean(ec, w = comppct_r))
 
 idx <- !complete.cases(mu_avg$`ec_r.000-030`, mu_avg$ph_030, mu_avg$ESP_030)
 test <- mu_avg[is.na(mu_avg$SAS_030), ]
@@ -186,14 +216,6 @@ test <- sprc(lf_100)
 fn <- "gnatsgo_Oct22_SAS_100.tif"
 merge(test, filename = fn, datatype = "INT1U")
 # if (file.path(fp, fn) |> file.exists()) file.remove(lf_100)
-
-fn <- "gnatsgo_Oct22_SAS_030.tif"
-test <- rast(fn)
-writeRaster(test, "gnatsgo_Oct22_SAS_030_INT1U.tif", datatype = "INT1U")
-
-fn <- "gnatsgo_Oct22_SAS_100.tif"
-test <- rast(fn)
-writeRaster(test, "gnatsgo_Oct22_SAS_100_INT1U.tif", datatype = "INT1U")
 
 
 # gdalUtilities::gdalbuildvrt(gdalfile = unlist(l2), output.vrt = "test.vrt", dryrun = TRUE)
