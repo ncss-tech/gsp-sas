@@ -3,6 +3,7 @@ library(aqp)
 library(soilDB)
 library(sf)
 library(terra)
+library(soilassessment)
 
 
 # load gNATSGO ----
@@ -13,6 +14,7 @@ lyr <- st_layers(dsn)
 
 f <- fetchGDB(dsn, childs = FALSE)
 mu <- get_mapunit_from_GDB(dsn, stats = FALSE, stringsAsFactors = TRUE)
+mu <- subset(mu, !duplicated(mukey))
 # save(f, mu, file = "gnatsgo_Oct22.RData")
 load(file = "gnatsgo_Oct22.RData")
 
@@ -29,7 +31,7 @@ h_seg <- horizons(f) |>
 
 
 vars <- c("mukey", "cokey", "comppct_r")
-h_seg2 <- merge(h_avg, site(f)[vars], by = "cokey", all.x = TRUE)
+h_seg2 <- merge(h_seg, site(f)[vars], by = "cokey", all.x = TRUE)
 
 co_avg <- collapse::collap(
   h_seg2, 
@@ -57,9 +59,8 @@ mu_avg <- reshape(
   v.names   = c("ec_r", "sar_r", "ph1to1h2o_r", "h")
 )
 
+mu_avg <- merge(mu["mukey"], mu_avg, by = "mukey", all.x = TRUE)
 mu_avg$statsgo <- mu_avg$mukey %in% mu$mukey[mu$areasymbol == "US"]
-idx <- grepl("NA$", names(mu_avg))
-mu_avg <- mu_avg[!idx]
 
 mu_avg <- within(mu_avg, {
   ph_030 = log10(`h.000-030`)
@@ -85,7 +86,7 @@ mu_avg <- within(mu_avg, {
 # View(co_avg[idx])
 
 
-# saveRDS(mu_avg, "mu_avg_sas.rds")
+# saveRDS(mu_avg, file.path("C:/workspace2", "mu_avg_sas.rds"))
 mu_avg <- readRDS(file.path("C:/workspace2", "mu_avg_sas.rds"))
 
 esp <- function(SAR) {
@@ -103,14 +104,21 @@ mu_avg <- within(mu_avg, {
   ph_h2o     = ph_100
   # ph_100_sat = predict(ph_lm, data.frame(ph_h2o))
                         
-  ESP_030 = esp(`sar_r.000-030`)
-  ESP_100 = esp(`sar_r.030-100`)
   
-  SAS_030 = allocate(EC = `ec_r.000-030`, pH = ph_030, ESP = ESP_030)
-  SAS_100 = allocate(EC = `ec_r.030-100`, pH = ph_100, ESP = ESP_100)
+  EC_030 = ifelse(is.na(`ec_r.000-030`), 0, `ec_r.000-030`)
+  EC_100 = ifelse(is.na(`ec_r.030-100`), 0, `ec_r.030-100`)
   
-  SAS_030x = classCode(saltSeverity(ph = ph_030, ec = `ec_r.000-030`, esp = ESP_030), "saltseverity")
-  SAS_100x = classCode(saltSeverity(ph = ph_030, ec = `ec_r.030-100`, esp = ESP_100), "saltseverity")
+  SAR_030 = ifelse(is.na(`sar_r.000-030`), 0, `sar_r.000-030`)
+  SAR_100 = ifelse(is.na(`sar_r.030-100`), 0, `sar_r.030-100`)
+  
+  ESP_030 = esp(SAR_030)
+  ESP_100 = esp(SAR_100)
+  
+  SAS_030 = allocate(EC = EC_030, pH = ph_030, ESP = ESP_030)
+  SAS_100 = allocate(EC = EC_100, pH = ph_100, ESP = ESP_100)
+  
+  SAS_030x = classCode(saltSeverity(ph = ph_030, ec = EC_030, esp = ESP_030), "saltseverity")
+  SAS_100x = classCode(saltSeverity(ph = ph_030, ec = EC_100, esp = ESP_100), "saltseverity")
 })
 
 
@@ -127,7 +135,7 @@ test <- get_SDA_property(
 test2 <- merge(test, mu_avg, by = "mukey", all.x = TRUE)
 vars <- c("mukey", "ec_r", "ec_r.000-030")
 test3 <- within(test2[vars], {
-  dif = ec_r - `ec_r.000-030`
+  dif = round(ec_r - `ec_r.000-030`, 2)
 })
 
 
@@ -207,14 +215,14 @@ derat(l, dat, c("SAS_030", "SAS_100"))
 lf_030 <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}_SAS_030.tif", full.names = TRUE)
 test <- sprc(lf_030)
 fn <- "gnatsgo_Oct22_SAS_030.tif"
-merge(test, filename = fn, datatype = "INT1U")
+merge(test, filename = fn, datatype = "INT1U", overwrite = TRUE)
 # if (file.path(fp, fn) |> file.exists()) file.remove(lf_030)
 
 
 lf_100 <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}_SAS_100.tif", full.names = TRUE)
 test <- sprc(lf_100)
 fn <- "gnatsgo_Oct22_SAS_100.tif"
-merge(test, filename = fn, datatype = "INT1U")
+merge(test, filename = fn, datatype = "INT1U", overwrite = TRUE)
 # if (file.path(fp, fn) |> file.exists()) file.remove(lf_100)
 
 
@@ -242,7 +250,7 @@ test <- allocate(
 test2 <- r[[1]]
 test2[!is.na(test2)] <- 0
 values(test2) <- as.integer(test)
-writeRaster(test2, filename = "test_dsm.tif")
+writeRaster(test2, filename = "gsp_sas.tif")
 
 
 
