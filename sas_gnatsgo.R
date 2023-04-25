@@ -7,8 +7,9 @@ library(soilassessment)
 
 
 # load gNATSGO ----
-fp  <- file.path("D:/geodata/soils/gNATSGO_CONUS_Oct2022")
-dsn <- file.path(fp, "gNATSGO_CONUS_Oct2022.gdb")
+fp_box <- file.path("C:/Users/stephen.roecker/Box/GSP salinity maps")
+fp_geo <- file.path("D:/geodata/soils/gNATSGO_CONUS_Oct2022")
+dsn <- file.path(fp_geo, "gNATSGO_CONUS_Oct2022.gdb")
 
 lyr <- st_layers(dsn)
 
@@ -18,9 +19,11 @@ mu <- subset(mu, !duplicated(mukey))
 # save(f, mu, file = "gnatsgo_Oct22.RData")
 load(file = "gnatsgo_Oct22.RData")
 
-gnatsgo_r <- rast(file.path(fp, "gNATSGO-mukey.tif"))
+gnatsgo_r <- rast(file.path(fp_geo, "gNATSGO-mukey.tif"))
 
 
+
+# weighted average ----
 h_seg <- horizons(f) |>
   within({
     hzdep_thk =  (hzdepb_r - hzdept_r) / 2
@@ -86,18 +89,28 @@ mu_avg <- within(mu_avg, {
 # View(co_avg[idx])
 
 
-# saveRDS(mu_avg, file.path("C:/workspace2", "mu_avg_sas.rds"))
-mu_avg <- readRDS(file.path("C:/workspace2", "mu_avg_sas.rds"))
+s <- strsplit(tolower(mu$muname), " |, ")
+idx <- sapply(s, function(x) x[2] == "water" | x[1] == "water")
+mu$water <- idx
 
+mu_avg <- merge(mu_avg, mu[c("mukey", "water")], by = "mukey", all.x = TRUE, sort = FALSE)
+
+# saveRDS(mu_avg, file.path(fp_box, "gnatsgo_Oct2022_wavg_sas.rds"))
+mu_avg <- readRDS(file.path(fp_box, "gnatsgo_Oct2022_wavg_sas.rds"))
+
+
+
+# classify SAS ----
 esp <- function(SAR) {
   (100 * (-0.0126 + 0.01475 * SAR)) / 
     (1   + (-0.0126 + 0.01475 * SAR))
 }
 
+idx <- mu_avg$water == FALSE
 
 mu_avg <- within(mu_avg, {
-  ph_030[is.infinite(ph_030)] <- 0
-  ph_100[is.infinite(ph_100)] <- 0
+  ph_030[is.infinite(ph_030) & idx] <- 0
+  ph_100[is.infinite(ph_100) & idx] <- 0
   
   ph_h2o     = ph_030
   # ph_030_sat = predict(ph_lm, data.frame(ph_h2o))
@@ -105,11 +118,11 @@ mu_avg <- within(mu_avg, {
   # ph_100_sat = predict(ph_lm, data.frame(ph_h2o))
                         
   
-  EC_030 = ifelse(is.na(`ec_r.000-030`), 0, `ec_r.000-030`)
-  EC_100 = ifelse(is.na(`ec_r.030-100`), 0, `ec_r.030-100`)
+  EC_030 = ifelse(is.na(`ec_r.000-030`) & idx, 0, `ec_r.000-030`)
+  EC_100 = ifelse(is.na(`ec_r.030-100`) & idx, 0, `ec_r.030-100`)
   
-  SAR_030 = ifelse(is.na(`sar_r.000-030`), 0, `sar_r.000-030`)
-  SAR_100 = ifelse(is.na(`sar_r.030-100`), 0, `sar_r.030-100`)
+  SAR_030 = ifelse(is.na(`sar_r.000-030`) & idx, 0, `sar_r.000-030`)
+  SAR_100 = ifelse(is.na(`sar_r.030-100`) & idx, 0, `sar_r.030-100`)
   
   ESP_030 = esp(SAR_030)
   ESP_100 = esp(SAR_100)
@@ -122,7 +135,10 @@ mu_avg <- within(mu_avg, {
 })
 
 
-# compare with SDA
+
+## compare with SDA ----
+
+### get_SDA_project ----
 le <- get_legend_from_SDA(WHERE = "areasymbol LIKE 'CA%'")
 test <- get_SDA_property(
   "ec_r", 
@@ -139,6 +155,7 @@ test3 <- within(test2[vars], {
 })
 
 
+### fetchGDB ----
 f2 <- f[f$mukey == "1860756"]
 View(subset(horizons(f2), select = c(cokey, ec_r, sar_r, ph1to1h2o_r, hzdept_r)))
 h2 <- horizons(f2)
@@ -166,6 +183,7 @@ table(mu_avg$SAS_030, mu_avg$SAS_030x)
 test <- subset(mu_avg, SAS_030x == "Saline-sodic" & SAS_030 == "slightly sodic")
 
 
+## finalize results ----
 dat <- with(mu_avg, data.frame(
   mukey = as.integer(mukey), 
   SAS_030 = as.integer(SAS_030), 
@@ -175,7 +193,7 @@ dat <- with(mu_avg, data.frame(
 
 
 # rasterize ----
-setwd(fp)
+setwd(fp_geo)
 
 r <- gnatsgo_r
 res <- sqrt(res(r)[1]^2 * ncell(r) / 50)
@@ -185,7 +203,7 @@ plot(test)
 
 makeTiles(gnatsgo_r, test, filename = "gnatsgo_.tif", overwrite = TRUE)
 
-l <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}.tif")
+l <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}.tif", full.names = TRUE)
 
 derat <- function(l, dat, vars) {
   lapply(vars, function(var) {
@@ -206,25 +224,27 @@ derat <- function(l, dat, vars) {
 derat(l, dat, c("SAS_030", "SAS_100"))
 
 
-# l2 <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}_cat.tif", full.names = TRUE)
+lf_030 <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}_SAS_030.tif", full.names = TRUE)
+test <- sprc(lf_030)
+fn <- "gnatsgo_Oct22_SAS_030.tif"
+merge(test, filename = fn, datatype = "INT1U", overwrite = TRUE)
+# if (file.path(fp_geo, fn) |> file.exists()) file.remove(lf_030)
+gnat_030_r <- rast(fn)
+
+
+lf_100 <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}_SAS_100.tif", full.names = TRUE)
+test <- sprc(lf_100)
+fn <- file.path(fp_geo, "gnatsgo_Oct22_SAS_100.tif")
+merge(test, filename = fn, datatype = "INT1U", overwrite = TRUE)
+# if (file.path(fp_geo, fn) |> file.exists()) file.remove(lf_100)
+gnat_100_r <- rast(fn)
+
+
+# l2 <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}_cat.tif", full.names = TRUE)
 # lf <- lapply(l2, rast)
 # lf$filename = "test.tif"
 # lf$overwrite = TRUE
 # do.call("merge", lf)
-
-lf_030 <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}_SAS_030.tif", full.names = TRUE)
-test <- sprc(lf_030)
-fn <- "gnatsgo_Oct22_SAS_030.tif"
-merge(test, filename = fn, datatype = "INT1U", overwrite = TRUE)
-# if (file.path(fp, fn) |> file.exists()) file.remove(lf_030)
-
-
-lf_100 <- list.files(path = fp, pattern = "gnatsgo_[0-9]{1,2}_SAS_100.tif", full.names = TRUE)
-test <- sprc(lf_100)
-fn <- "gnatsgo_Oct22_SAS_100.tif"
-merge(test, filename = fn, datatype = "INT1U", overwrite = TRUE)
-# if (file.path(fp, fn) |> file.exists()) file.remove(lf_100)
-
 
 # gdalUtilities::gdalbuildvrt(gdalfile = unlist(l2), output.vrt = "test.vrt", dryrun = TRUE)
 # gdalUtilities::gdalwarp(srcfile = "test.vrt", dstfile = "test_vrt.tif")
@@ -232,25 +252,37 @@ merge(test, filename = fn, datatype = "INT1U", overwrite = TRUE)
 
 
 # GSP maps ----
-fp <- "D:/geodata/project_data/gsp-sas/deliverables/maps/CONUS"
-l <- list.files(fp, pattern = ".tif$", full.names = TRUE)
+fp_gsp <- "D:/geodata/project_data/gsp-sas/deliverables/maps/CONUS"
+l <- list.files(fp_gsp, pattern = ".tif$", full.names = TRUE)
 r <- rast(c(
   EC_030  = l[[5]], EC_100  = l[[6]], 
   ph_030  = l[[3]], pH_100  = l[[4]],
   ESP_030 = l[[1]], ESP_100 = l[[2]]
   ))
 
-test <- allocate(
+sas_030 <- allocate(
   EC = values(r$USA840_CONUS_SalinityMap030), 
   pH = values(r$USA840_CONUS_pHMap030), 
   ESP = values(r$USA840_CONUS_ESPMap030), 
   to = "FAO Salt Severity"
 )  
 
-test2 <- r[[1]]
-test2[!is.na(test2)] <- 0
-values(test2) <- as.integer(test)
-writeRaster(test2, filename = "gsp_sas.tif")
+sas_100 <- allocate(
+  EC = values(r$USA840_CONUS_SalinityMap30100), 
+  pH = values(r$USA840_CONUS_pHMap30100), 
+  ESP = values(r$USA840_CONUS_ESPMap30100), 
+  to = "FAO Salt Severity"
+)  
+
+sas_030_r <- r[[1]]
+sas_030_r[!is.na(sas_030_r)] <- 0
+values(sas_030_r) <- as.integer(sas_030)
+writeRaster(sas_030_r, filename = file.path(fp_box, "ssurgo_comparison/gsp_sas_030.tif"), datatype = "INT1U")
+
+sas_100_r <- r[[1]]
+sas_100_r[!is.na(sas_100_r)] <- 0
+values(sas_100_r) <- as.integer(sas_100)
+writeRaster(sas_100_r, filename = file.path(fp_box, "ssurgo_comparison/gsp_sas_100.tif"), datatype = "INT1U")
 
 
 
@@ -266,7 +298,7 @@ s_mps_sf$SAS_int <- as.integer(s_mps_sf$SAS)
 write_sf(s_mps_sf, "test.shp")
 
 vars <- c("test2.tif", "test_dsm.tif")
-l  <- file.path(fp, vars)
+l  <- file.path(fp_prj, vars)
 
 test2 <- rast(l[1])
 test_dsm <- rast(l[2])
@@ -290,5 +322,13 @@ caret::confusionMatrix(table(pred = ex$SAS2, obs = ex$SAS_int))$overall |> round
 f2 <- f[f$mukey == "2611946"]
 h2 <- horizons(f2)
 View(h2[grep("cokey|mukey|ec_|sar_|ph1|^h.0|statsgo", names(h2))])
+
+
+
+# tally results ----
+l <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}.tif", full.names = TRUE)
+test <- sapply(l, function(x) {cat("processing", as.character(Sys.time()), "\n"); x <- values(rast(x)); tot = sum(!is.na(x), na.rm = TRUE)})
+units::set_units(test * 30^2) |> units::set_units(value = "km2")
+
 
 
