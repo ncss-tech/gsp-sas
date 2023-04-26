@@ -196,12 +196,12 @@ dat <- with(mu_avg, data.frame(
 setwd(fp_geo)
 
 r <- gnatsgo_r
-res <- sqrt(res(r)[1]^2 * ncell(r) / 50)
+res <- sqrt(res(r)[1]^2 * ncell(r) / 100)
 test <- rast(res = res, extent = ext(r), crs = crs(r))
 values(test) <- 1:ncell(test)
 plot(test)
 
-makeTiles(gnatsgo_r, test, filename = "gnatsgo_.tif", overwrite = TRUE)
+makeTiles(gnatsgo_r, test, filename = file.path(fp_geo, "gnatsgo_.tif"), overwrite = TRUE)
 
 l <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}.tif", full.names = TRUE)
 
@@ -226,10 +226,11 @@ derat(l, dat, c("SAS_030", "SAS_100"))
 
 lf_030 <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}_SAS_030.tif", full.names = TRUE)
 test <- sprc(lf_030)
-fn <- "gnatsgo_Oct22_SAS_030.tif"
+fn <- file.path(fp_geo, "gnatsgo_Oct22_SAS_030.tif")
 merge(test, filename = fn, datatype = "INT1U", overwrite = TRUE)
 # if (file.path(fp_geo, fn) |> file.exists()) file.remove(lf_030)
 gnat_030_r <- rast(fn)
+# makeTiles(gnat_030_r, test, filename = file.path(fp_geo, "gnatsgo_SAS_030_.tif"), overwrite = TRUE)
 
 
 lf_100 <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}_SAS_100.tif", full.names = TRUE)
@@ -238,7 +239,7 @@ fn <- file.path(fp_geo, "gnatsgo_Oct22_SAS_100.tif")
 merge(test, filename = fn, datatype = "INT1U", overwrite = TRUE)
 # if (file.path(fp_geo, fn) |> file.exists()) file.remove(lf_100)
 gnat_100_r <- rast(fn)
-
+# makeTiles(gnat_100_r, test, filename = file.path(fp_geo, "gnatsgo_SAS_100_.tif"), overwrite = TRUE)
 
 # l2 <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}_cat.tif", full.names = TRUE)
 # lf <- lapply(l2, rast)
@@ -326,9 +327,66 @@ View(h2[grep("cokey|mukey|ec_|sar_|ph1|^h.0|statsgo", names(h2))])
 
 
 # tally results ----
-l <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}.tif", full.names = TRUE)
-test <- sapply(l, function(x) {cat("processing", as.character(Sys.time()), "\n"); x <- values(rast(x)); tot = sum(!is.na(x), na.rm = TRUE)})
-units::set_units(test * 30^2) |> units::set_units(value = "km2")
+lf_030 <- list.files(path = fp_geo, pattern = "gnatsgo_SAS_030_[0-9]{1,3}.tif", full.names = TRUE)
+lf_100 <- list.files(path = fp_geo, pattern = "gnatsgo_SAS_100_[0-9]{1,3}.tif", full.names = TRUE)
+lf <- c(lf_030, lf_100)
+
+# library(parallel)
+# clus <- makeCluster(15)
+# clusterExport(clus, list("values", "rast", "lf"))
+
+sas_tal <- lapply(lf, function(x) {
+  
+  cat("processing", as.character(Sys.time()), "\n")
+  
+  x <- values(rast(x))
+  
+  sas = x |>
+    as.integer() |>
+    cut(breaks = 0:11, labels = 1:11, right = TRUE) |>
+    table(useNA = "always")
+    
+  return(sas)
+  })
+# stopCluster(clus)
+
+sas_tal2 <- do.call("rbind", sas_tal) |> as.data.frame()
+names(sas_tal2)[12] <- "missing"
+n <- nchar(lf)
+sas_tal2$dep <- sapply(lf, function(x) strsplit(x, "/|_|\\.")[[1]][9])
+sas_tal2$id  <- sapply(lf, function(x) strsplit(x, "/|_|\\.")[[1]][10])
+
+# save(sas_tal2, file = file.path(fp_box, "sas_tally.RData"))
 
 
+# sas_tal3 <- reshape(
+#   sas_tal2,
+#   direction = "wide",
+#   idvar     = "id",
+#   timevar   = "dep",
+#   v.names   = c(as.character(1:11, "missing"))
+# )
+
+
+# vapply(sas_tal, function(x) {
+#   {x * 30^2} |> 
+#     units::set_units(value = "m2") |> 
+#     units::set_units(value = "km2") |> 
+#     sum()
+#   },
+#   FUN.VALUE = 0
+# )
+
+tal <- aggregate(.~ dep, data = sas_tal2[c(1:11, 13)], sum)
+tal <- tal[c(2:12, 1)]
+
+idx_l <- list(sas = c(1:5, 7:11), sal = 1:5, sod = 7:11, non = 6)
+tal2 <- sapply(idx_l, function(x) {
+  {tal[x] * 30^2} |>
+    rowSums(na.rm = TRUE) |>
+    units::set_units(value = "m2") |>
+    units::set_units(value = "km2")
+    }
+)
+cbind(tal[12], tal2)
 
