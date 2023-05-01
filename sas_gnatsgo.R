@@ -278,12 +278,14 @@ sas_100 <- allocate(
 sas_030_r <- r[[1]]
 sas_030_r[!is.na(sas_030_r)] <- 0
 values(sas_030_r) <- as.integer(sas_030)
-writeRaster(sas_030_r, filename = file.path(fp_box, "ssurgo_comparison/gsp_sas_030.tif"), datatype = "INT1U")
+# writeRaster(sas_030_r, filename = file.path(fp_box, "ssurgo_comparison/gsp_sas_030.tif"), datatype = "INT1U")
+sas_030_r <- rast(file.path(fp_box, "ssurgo_comparison/gsp_sas_030.tif"))
 
 sas_100_r <- r[[1]]
 sas_100_r[!is.na(sas_100_r)] <- 0
 values(sas_100_r) <- as.integer(sas_100)
-writeRaster(sas_100_r, filename = file.path(fp_box, "ssurgo_comparison/gsp_sas_100.tif"), datatype = "INT1U")
+# writeRaster(sas_100_r, filename = file.path(fp_box, "ssurgo_comparison/gsp_sas_100.tif"), datatype = "INT1U")
+sas_100_r <- rast(file.path(fp_box, "ssurgo_comparison/gsp_sas_100.tif"))
 
 
 
@@ -357,7 +359,25 @@ sas_tal2$dep <- sapply(lf, function(x) strsplit(x, "/|_|\\.")[[1]][9])
 sas_tal2$id  <- sapply(lf, function(x) strsplit(x, "/|_|\\.")[[1]][10])
 
 # save(sas_tal2, file = file.path(fp_box, "sas_tally.RData"))
+load(file.path(fp_box, "sas_tally.RData"))
 
+sas_030_r_tal <- sas_030_r |>
+  project(y = crs("epsg:5070"), res = 1000, method = "near") |>
+  values() |> 
+  as.integer() |>
+  cut(breaks = 0:11, labels = 1:11, right = TRUE) |>
+  table(useNA = "always")
+
+sas_100_r_tal <- sas_100_r |>
+  project(y = crs("epsg:5070"), res = 1000, method = "near") |>
+  values() |> 
+  as.integer() |>
+  cut(breaks = 0:11, labels = 1:11, right = TRUE) |>
+  table(useNA = "always")
+
+sas_gsp_tal <- rbind(sas_030_r_tal, sas_100_r_tal) |> as.data.frame()
+names(sas_gsp_tal[12]) <- "missing"
+sas_gsp_tal$dep <- c("030", "100")
 
 # sas_tal3 <- reshape(
 #   sas_tal2,
@@ -380,13 +400,24 @@ sas_tal2$id  <- sapply(lf, function(x) strsplit(x, "/|_|\\.")[[1]][10])
 tal <- aggregate(.~ dep, data = sas_tal2[c(1:11, 13)], sum)
 tal <- tal[c(2:12, 1)]
 
-idx_l <- list(sas = c(1:5, 7:11), sal = 1:5, sod = 7:11, non = 6)
+idx_l <- list(sas = c(1:4, 7:11), sal = 1:4, sod = 7:11, non = 6)
 tal2 <- sapply(idx_l, function(x) {
   {tal[x] * 30^2} |>
     rowSums(na.rm = TRUE) |>
     units::set_units(value = "m2") |>
-    units::set_units(value = "km2")
+    units::set_units(value = "ha")
     }
 )
 cbind(tal[12], tal2)
+
+
+tal_gsp2 <- sapply(idx_l, function(x) {
+  {sas_gsp_tal[x] * 1000^2} |>
+    rowSums(na.rm = TRUE) |>
+    units::set_units(value = "m2") |>
+    units::set_units(value = "ha")
+}
+)
+cbind(dep = c("030", "100"),  tal_gsp2)
+
 
