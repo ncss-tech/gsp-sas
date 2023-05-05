@@ -7,8 +7,10 @@ library(soilassessment)
 
 
 # load gNATSGO ----
-fp_box <- file.path("C:/Users/stephen.roecker/Box/GSP salinity maps")
-fp_geo <- file.path("D:/geodata/soils/gNATSGO_CONUS_Oct2022")
+fp_box  <- file.path("C:/Users/stephen.roecker/Box/GSP salinity maps")
+fp_geo  <- file.path("D:/geodata/soils/gNATSGO_CONUS_Oct2022")
+fp_nlcd <- file.path("D:/geodata/land_use_land_cover/nlcd_2019_land_cover_l48_20210604")
+fp_cdls <- file.path("D:/geodata/land_use_land_cover/2022_30m_cdls")
 dsn <- file.path(fp_geo, "gNATSGO_CONUS_Oct2022.gdb")
 
 lyr <- st_layers(dsn)
@@ -22,6 +24,26 @@ load(file = "gnatsgo_Oct22.RData")
 gnatsgo_r <- rast(file.path(fp_geo, "gNATSGO-mukey.tif"))
 
 
+gdalUtilities::gdalwarp(
+  srcfile = file.path(fp_nlcd, "nlcd_2019_land_cover_l48_20210604.img"),
+  dstfile = file.path(fp_nlcd, "nlcd_2019_land_cover_l48_20210604_5070.tif"),
+  t_srs = "EPSG:5070",
+  r = "near",
+  tr = c(30, 30),
+  te = ext(gnatsgo_r)[c(1, 3, 2,4)]
+)
+nlcd_r <- rast(file.path(fp_nlcd, "nlcd_2019_land_cover_l48_20210604_5070.tif"))
+
+
+gdalUtilities::gdalwarp(
+  srcfile = file.path(fp_cdls, "2022_30m_cdls.tif"),
+  dstfile = file.path(fp_cdls, "2022_30m_cdls_ext.tif"),
+  r = "near",
+  te = ext(gnatsgo_r)[c(1, 3, 2,4)]
+)
+cdls_r <- rast(file.path(fp_cdls, "2022_30m_cdls_ext.tif"))
+  
+  
 
 # weighted average ----
 h_seg <- horizons(f) |>
@@ -193,7 +215,6 @@ dat <- with(mu_avg, data.frame(
 
 
 # rasterize ----
-setwd(fp_geo)
 
 r <- gnatsgo_r
 res <- sqrt(res(r)[1]^2 * ncell(r) / 100)
@@ -201,7 +222,8 @@ test <- rast(res = res, extent = ext(r), crs = crs(r))
 values(test) <- 1:ncell(test)
 plot(test)
 
-makeTiles(gnatsgo_r, test, filename = file.path(fp_geo, "gnatsgo_.tif"), overwrite = TRUE)
+makeTiles(gnatsgo_r, test, filename = file.path(fp_geo,  "gnatsgo_.tif"), datatype = "INT1U", overwrite = TRUE)
+makeTiles(nlcd_r,    test, filename = file.path(fp_nlcd, "nlcd2020_.tif"), datatype = "INT1U", overwrite = TRUE)
 
 l <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}.tif", full.names = TRUE)
 
@@ -300,8 +322,11 @@ s_mps_sf$SAS <- allocate(
 s_mps_sf$SAS_int <- as.integer(s_mps_sf$SAS)
 write_sf(s_mps_sf, "test.shp")
 
-vars <- c("test2.tif", "test_dsm.tif")
-l  <- file.path(fp_prj, vars)
+vars <- c(
+  file.path(fp_geo, "gnatsgo_Oct22_SAS_030.tif"),
+  file.path(fp_box, "ssurgo_comparison/gsp_sas_030.tif")
+)
+l  <- vars
 
 test2 <- rast(l[1])
 test_dsm <- rast(l[2])
@@ -329,38 +354,63 @@ View(h2[grep("cokey|mukey|ec_|sar_|ph1|^h.0|statsgo", names(h2))])
 
 
 # tally results ----
+
+## gNATSGO ----
 lf_030 <- list.files(path = fp_geo, pattern = "gnatsgo_SAS_030_[0-9]{1,3}.tif", full.names = TRUE)
 lf_100 <- list.files(path = fp_geo, pattern = "gnatsgo_SAS_100_[0-9]{1,3}.tif", full.names = TRUE)
 lf <- c(lf_030, lf_100)
+
+nlcd_l <- list.files(path = fp_nlcd, pattern = "nlcd2020_[0-9]{1,3}.tif$", full.names = TRUE)
+nlcd_l <- c(nlcd_l, nlcd_l)
+lev <- levels(nlcd_r)[[1]]
+idx <- nchar(lev$`NLCD Land Cover Class`) > 1
+lev <- lev[idx, ]
+
 
 # library(parallel)
 # clus <- makeCluster(15)
 # clusterExport(clus, list("values", "rast", "lf"))
 
-sas_tal <- lapply(lf, function(x) {
+sas_tal <- lapply(1:length(lf), function(i) {
   
-  cat("processing", as.character(Sys.time()), "\n")
+  cat("processing", lf[i], as.character(Sys.time()), "\n")
   
-  x <- values(rast(x))
+  # x <- rast(lf[i])
+  # crs(x) <- "epsg:5070"
+  x <- values(rast(lf[i]))
+  y <- values(rast(nlcd_l[i]))
   
   sas = x |>
     as.integer() |>
-    cut(breaks = 0:11, labels = 1:11, right = TRUE) |>
-    table(useNA = "always")
+    factor(levels = 1:11)
+  
+  nlcd = y |>
+    as.integer() |>
+    factor(levels = lev$val)
+  
+  tb <- table(sas, nlcd, useNA = "always")
     
-  return(sas)
+  return(tb)
   })
 # stopCluster(clus)
+# saveRDS(sas_tal, file = file.path(fp_box, "sas_tal.rds"))
 
-sas_tal2 <- do.call("rbind", sas_tal) |> as.data.frame()
-names(sas_tal2)[12] <- "missing"
+sas_tal2 <- lapply(sas_tal, function(x) {
+  idx <- as.integer(row.names(x))
+  x2 <- cbind(nm, as.matrix(x))
+  return(x2)
+  })
+sas_tal2 <- do.call("rbind", sas_tal2) |> as.data.frame()
+sas_tal2$nm[is.na(sas_tal2$nm)] <- 0L
 n <- nchar(lf)
 sas_tal2$dep <- sapply(lf, function(x) strsplit(x, "/|_|\\.")[[1]][9])
-sas_tal2$id  <- sapply(lf, function(x) strsplit(x, "/|_|\\.")[[1]][10])
+names(sas_tal2)[is.na(names(sas_tal2))] <- "missing"
 
 # save(sas_tal2, file = file.path(fp_box, "sas_tally.RData"))
 load(file.path(fp_box, "sas_tally.RData"))
 
+
+## GSP ----
 sas_030_r_tal <- sas_030_r |>
   project(y = crs("epsg:5070"), res = 1000, method = "near") |>
   values() |> 
@@ -397,19 +447,52 @@ sas_gsp_tal$dep <- c("030", "100")
 #   FUN.VALUE = 0
 # )
 
-tal <- aggregate(.~ dep, data = sas_tal2[c(1:11, 13)], sum)
-tal <- tal[c(2:12, 1)]
+## CDLS ----
+sas_030_r <- rast(file.path(fp_geo, "gnatsgo_Oct22_SAS_030.tif"))
+sas_100_r <- rast(file.path(fp_geo, "gnatsgo_Oct22_SAS_100.tif"))
+cdls_r    <- rast(file.path(fp_cdls, "2022_30m_cdls_ext.tif"))
 
-idx_l <- list(sas = c(1:4, 7:11), sal = 1:4, sod = 7:11, non = 6)
-tal2 <- sapply(idx_l, function(x) {
-  {tal[x] * 30^2} |>
-    rowSums(na.rm = TRUE) |>
-    units::set_units(value = "m2") |>
-    units::set_units(value = "ha")
-    }
+rs <- c(sas_030_r, sas_100_r, cdls_r)
+samp <- lapply(1:100, function(x) spatSample(rs, 1000))
+samp <- do.call("rbind", samp)
+names(samp)[1:2] <- c("sas030", "sas100")
+
+samp2 <- data.frame(
+  sas = ! samp$sas030 %in% c(5:6) & ! samp$sas100 %in% 5:6, 
+  class = tolower(as.character(samp$Class_Names))
 )
-cbind(tal[12], tal2)
+samp2 <- within(samp2, { 
+  class2 = class
+  class2 = ifelse(grepl("corn", class2),  "corn", class2)
+  class2 = ifelse(grepl("wheat", class2), "wheat", class2)
+})
+table(samp2$class2, samp2$sas) |> as.matrix() |> as.data.frame.matrix() |> View()
 
+
+## summarize ----
+tal <- aggregate(.~ nm + dep, data = sas_tal2, sum)
+
+tal2 <- by(tal, tal$dep, function(x) {
+  
+  idx_l <- list(
+    sas = which(x$nm %in% c(1:4, 7:11)), 
+    sal = which(x$nm %in% 1:4), 
+    sod = which(x$nm %in% 7:11), 
+    non = which(tal$nm %in% 6)
+  )
+  
+  tal2 <- sapply(idx_l, function(i) {
+    {x[i, -1 * 1:2] * 30^2} |>
+      colSums(na.rm = TRUE) |>
+      units::set_units(value = "m2") |>
+      units::set_units(value = "ha")
+  })
+  tal2 <- data.frame(
+    nlcd = c(lev$`NLCD Land Cover Class`, "missing"), 
+    tal2
+  )
+})
+tal2
 
 tal_gsp2 <- sapply(idx_l, function(x) {
   {sas_gsp_tal[x] * 1000^2} |>
