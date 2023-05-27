@@ -222,8 +222,8 @@ test <- rast(res = res, extent = ext(r), crs = crs(r))
 values(test) <- 1:ncell(test)
 plot(test)
 
-makeTiles(gnatsgo_r, test, filename = file.path(fp_geo,  "gnatsgo_.tif"), datatype = "INT1U", overwrite = TRUE)
-makeTiles(nlcd_r,    test, filename = file.path(fp_nlcd, "nlcd2020_.tif"), datatype = "INT1U", overwrite = TRUE)
+makeTiles(gnatsgo_r, test, filename = file.path(fp_geo,  "gnatsgo_.tif"), datatype = "INT4U", overwrite = TRUE)
+makeTiles(nlcd_r,    test, filename = file.path(fp_nlcd, "nlcd2020_.tif"), overwrite = TRUE)
 
 l <- list.files(path = fp_geo, pattern = "gnatsgo_[0-9]{1,2}.tif", full.names = TRUE)
 
