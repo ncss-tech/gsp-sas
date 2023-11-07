@@ -394,6 +394,7 @@ sas_tal <- lapply(1:length(lf), function(i) {
   })
 # stopCluster(clus)
 # saveRDS(sas_tal, file = file.path(fp_box, "sas_tal.rds"))
+sas_tal <- readRDS(file = file.path(fp_box, "sas_tal.rds"))
 
 sas_tal2 <- lapply(sas_tal, function(x) {
   idx <- as.integer(row.names(x))
@@ -425,9 +426,14 @@ sas_100_r_tal <- sas_100_r |>
   cut(breaks = 0:11, labels = 1:11, right = TRUE) |>
   table(useNA = "always")
 
+
 sas_gsp_tal <- rbind(sas_030_r_tal, sas_100_r_tal) |> as.data.frame()
 names(sas_gsp_tal[12]) <- "missing"
 sas_gsp_tal$dep <- c("030", "100")
+# save(sas_gsp_tal, file = file.path(fp_box, "sas_gsp_tal.RData"))
+load(file.path(fp_box, "sas_gsp_tal.RData"))
+
+
 
 # sas_tal3 <- reshape(
 #   sas_tal2,

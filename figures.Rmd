@@ -94,10 +94,10 @@ rs <- as(rs, "SpatialGridDataFrame")
 
 
 # classify salt severity
-rs$scl_030 <- .classify_salt_severity(rs$EC_030, rs$PH_030, rs$ESP_030)
+rs$scl_030 <- aqp:::.rank_salts(rs$EC_030, rs$PH_030, rs$ESP_030)
 rs$sco_030  <- as.integer(rs$scl_030)
 
-rs$scl_100 <- .classify_salt_severity(rs$EC_100, rs$PH_100, rs$ESP_100)
+rs$scl_100 <- aqp:::.rank_salts(rs$EC_100, rs$PH_100, rs$ESP_100)
 rs$sco_100  <- as.integer(rs$scl_100)
 
 writeGDAL(rs["sco_030"], fname = "C:/workspace2/gsp_sas_030.tif", type = "Int32", mvFlag = 0)
@@ -110,11 +110,11 @@ rs$land     <- ifelse(! rs$nlcd %in% c(11, 0), 1, 0)
 
 
 # reproject
-rs2 <- projectRaster(stack(rs), crs = CRS("+init=epsg:5070"), method = "ngb")
+rs2 <- projectRaster(readAll(stack(rs)), crs = CRS("+init=epsg:5070"), method = "ngb")
 rs2 <- as(rs2, "SpatialGridDataFrame")
 
-rs2$scl_030 <- .codify_salt_severity(as.integer(rs2$sco_030))
-rs2$scl_100 <- .codify_salt_severity(as.integer(rs2$sco_100))
+rs2$scl_030 <- aqp:::.codify_salt_severity (as.integer(rs2$sco_030))
+rs2$scl_100 <- aqp:::.codify_salt_severity(as.integer(rs2$sco_100))
 
 lv <- c(31, 52, 71, 81, 82, 1000)
 lb <- c("Barren Land", "Shrub/Scrub", "Grassland/Herbacesous", "Pasture/Hay", "Cultivated Crops", "Other")
@@ -130,8 +130,8 @@ hectares     <- rs2_cellsize[1] * rs2_cellsize[2] * 0.0001
 # calculate acres
 tb_030 <- table(rs2$scl_030)
 tb_100 <- table(rs2$scl_100)
-prettyNum(tb_030 * acres, big.mark = ",", scientific = FALSE, digits = 0)
-prettyNum(tb_100 * acres, big.mark = ",", scientific = FALSE, digits = 0)
+prettyNum(tb_030 * acres, big.mark = ",", scientific = FALSE)
+prettyNum(tb_100 * acres, big.mark = ",", scientific = FALSE)
 
 
 # nlcd acres
@@ -146,7 +146,7 @@ tb_030_nlcd_df  <- reshape(as.data.frame(tb_030_nlcd),
                            )
 tb_030_nlcd_df <- tb_030_nlcd_df[order(- tb_030_nlcd_df$`Freq.very strongly saline`), ]
 tb_030_nlcd_df[-1] <- sapply(tb_030_nlcd_df[-1], function(x) {
-  prettyNum(x * acres, big.mark = ",", scientific = FALSE, digits = 0)
+  prettyNum(x * acres, big.mark = ",", scientific = FALSE)
 })
 names(tb_030_nlcd_df)[1] <- "NLCD Class"
 names(tb_030_nlcd_df)[-1] <- gsub("Freq.", "", names(tb_030_nlcd_df[-1]))
@@ -160,7 +160,7 @@ tb_100_nlcd_df  <- reshape(as.data.frame(tb_100_nlcd),
                            )
 tb_100_nlcd_df <- tb_100_nlcd_df[order(- tb_100_nlcd_df$`Freq.very strongly saline`), ]
 tb_100_nlcd_df[-1] <- sapply(tb_100_nlcd_df[-1], function(x) {
-  prettyNum(x * acres, big.mark = ",", scientific = FALSE, digits = 0)
+  prettyNum(x * acres, big.mark = ",", scientific = FALSE)
 })
 names(tb_100_nlcd_df)[1] <- "NLCD Class"
 names(tb_100_nlcd_df)[-1] <- gsub("Freq.", "", names(tb_100_nlcd_df[-1]))
@@ -173,7 +173,7 @@ idx_fao  <- ! rs2$nlcd %in% c(0, 11) & (! rs2$scl_030 %in% c("nonsaline") | ! rs
 idx_usda <- ! rs2$nlcd %in% c(0, 11) & (! rs2$scl_030 %in% c("nonsaline", "slightly saline") | ! rs2$scl_100 %in% c("nonsaline", "slightly saline"))
 
 # total saline hectares & acres (fao)
-prettyNum(sum(table(rs2$scl_030[idx_nlcd])) * hectares, big.mark = ",", scientific = FALSE, digits = 0)
+prettyNum(sum(table(rs2$scl_030[idx_nlcd])) * hectares, big.mark = ",", scientific = FALSE)
 prettyNum(sum(table(rs2$scl_030[idx_fao]))  * hectares, big.mark = ",", scientific = FALSE, digits = 0)
 293588043 / 762849852 * 100
 prettyNum(sum(table(rs2$scl_030[idx_nlcd])) * acres,    big.mark = ",", scientific = FALSE, digits = 0)
@@ -188,8 +188,8 @@ prettyNum(sum(table(rs2$scl_030[idx_usda]))  * acres,    big.mark = ",", scienti
 
 
 # total cropland saline hectares & acres (fao)
-prettyNum(sum(table(rs2$scl_030[idx_crop])) * hectares, big.mark = ",", scientific = FALSE, digits = 0)
-prettyNum(sum(table(rs2$scl_030[idx_crop & idx_fao])) * hectares, big.mark = ",", scientific = FALSE, digits = 0)
+prettyNum(sum(table(rs2$scl_030[idx_crop])) * hectares, big.mark = ",", scientific = FALSE)
+prettyNum(sum(table(rs2$scl_030[idx_crop & idx_fao])) * hectares, big.mark = ",", scientific = FALSE)
 63875528 / 198995822 * 100
 prettyNum(sum(table(rs2$scl_030[idx_crop]))  * acres,    big.mark = ",", scientific = FALSE, digits = 0)
 prettyNum(sum(table(rs2$scl_030[idx_crop & idx_fao]))  * acres,    big.mark = ",", scientific = FALSE, digits = 0)
@@ -282,3 +282,51 @@ ggsave(gg_gsp, file = "C:/workspace2/pedon_location.png", dpi = 300)
 
 ```
 
+
+# deliverable stats
+```{r}
+setwd("D:/geodata/project_data/gsp-sas/deliverables/maps/CONUS/")
+
+f <- c(PH_030  = "USA840_CONUS_pHMap030.tif",
+       EC_030  = "USA840_CONUS_SalinityMap030.tif", 
+       ESP_030 = "USA840_CONUS_ESPMap030.tif",
+       PH_100  = "USA840_CONUS_pHMap30100.tif",
+       EC_100  = "USA840_CONUS_SalinityMap30100.tif",
+       ESP_100 = "USA840_CONUS_ESPMap30100.tif",
+       SAS_030 = "USA840_CONUS_SaltMap030.tif",
+       SAS_100 = "USA840_CONUS_SaltMap30100.tif",
+       nlcd    = "D:/geodata/project_data/gsp-sas/1km covariates/Other/nlcd_2016_conus.tif"
+       )
+rs <- rast(f[7:8])
+rs <- project(rs, "EPSG:5070", method = "near", rs = 1000)
+val <- rs[[1]] |> values() |> as.integer()
+table(val)
+
+
+```
+
+
+
+```{r}
+# estimate CONUS extent
+
+````{r}
+
+setwd("D:/geodata/project_data/gsp-sas/deliverables/maps/CONUS/")
+
+f <- c(PH_030  = "USA840_CONUS_pHMap030.tif",
+       EC_030  = "USA840_CONUS_SalinityMap030.tif", 
+       ESP_030 = "USA840_CONUS_ESPMap030.tif",
+       PH_100  = "USA840_CONUS_pHMap30100.tif",
+       EC_100  = "USA840_CONUS_SalinityMap30100.tif",
+       ESP_100 = "USA840_CONUS_ESPMap30100.tif",
+       SAS_030 = "USA840_CONUS_SaltMap030.tif",
+       SAS_100 = "USA840_CONUS_SaltMap30100.tif",
+       nlcd    = "D:/geodata/project_data/gsp-sas/1km covariates/Other/nlcd_2016_conus.tif"
+       )
+rs <- rast(f[7:8])
+rs <- project(rs, "EPSG:5070", method = "near", res = 1000, use_gdal = TRUE, threads = TRUE)
+
+
+
+````
